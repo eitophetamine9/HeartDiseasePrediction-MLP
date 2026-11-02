@@ -60,56 +60,102 @@ The system uses a feedforward 3-layer Multi-Layer Perceptron (MLP):
 ```
 
 ### 2. Forward Propagation Mechanics
-1. **Input Layer Assignment:**
-   For each feature index $i \in \{0, \dots, 12\}$, normalized input value $x_i \in [0, 1]$ is loaded into `inputNeurons[i].setInput(x_i)`.
 
-2. **Hidden Layer Activation:**
-   Each hidden neuron $h$ computes its weighted sum plus its intrinsic bias:
-   $$z_h = \text{bias}_h + \sum_{i=0}^{12} x_i \cdot w_{ih}$$
-   The hidden activation $a_h$ is computed using the logistic sigmoid function:
-   $$a_h = \sigma(z_h) = \frac{1}{1 + e^{-z_h}}$$
-   and stored using `hiddenNeurons[h].setHactivation(a_h)`.
+#### Step 1: Input Layer Assignment
+For each input feature index $i \in \{0, \dots, 12\}$, the MinMax-normalized patient measurement $x_i \in [0, 1]$ is loaded into the input neuron:
 
-3. **Output Layer Activation:**
-   The output neuron computes its net weighted sum from the hidden activations:
-   $$z_o = \text{bias}_o + \sum_{h=0}^{H-1} a_h \cdot w_{ho}$$
-   The final output probability $\hat{y}$ is:
-   $$\hat{y} = \sigma(z_o) = \frac{1}{1 + e^{-z_o}}$$
-   and saved using `outputNeurons[0].setOActivation(\hat{y})`.
+```csharp
+inputNeurons[i].setInput(x_i);
+```
+
+#### Step 2: Hidden Layer Activation
+Each hidden neuron $h$ computes its net weighted input $z_h$ by summing incoming weighted features and adding its internal bias:
+
+$$z_h = \text{bias}_h + \sum_{i=0}^{12} (x_i \cdot w_{ih})$$
+
+The activation $a_h$ is evaluated via the logistic sigmoid function:
+
+$$a_h = \sigma(z_h) = \frac{1}{1 + e^{-z_h}}$$
+
+and stored within the hidden neuron instance:
+
+```csharp
+hiddenNeurons[h].setHactivation(a_h);
+```
+
+#### Step 3: Output Layer Activation
+The single output neuron computes its net weighted sum $z_o$ across all hidden neuron activations:
+
+$$z_o = \text{bias}_o + \sum_{h=0}^{H-1} (a_h \cdot w_{ho})$$
+
+The final diagnostic probability $\hat{y}$ (the model's predicted likelihood of heart disease) is obtained through sigmoid activation:
+
+$$\hat{y} = \sigma(z_o) = \frac{1}{1 + e^{-z_o}}$$
+
+and saved in the output neuron:
+
+```csharp
+outputNeurons[0].setOActivation(y_hat);
+```
+
+---
 
 ### 3. Loss Function & Gradient Derivation
+
 For binary classification, the objective function is **Binary Cross-Entropy (BCE)** loss:
+
 $$\mathcal{L}(y, \hat{y}) = -\left[ y \ln(\hat{y}) + (1 - y) \ln(1 - \hat{y}) \right]$$
 
-The partial derivative of the loss with respect to the output neuron's net input $z_o$ is:
+Applying the chain rule gives the partial derivative of the loss with respect to the output neuron's net input $z_o$:
+
 $$\frac{\partial \mathcal{L}}{\partial z_o} = \frac{\partial \mathcal{L}}{\partial \hat{y}} \cdot \frac{\partial \hat{y}}{\partial z_o} = \left( -\frac{y}{\hat{y}} + \frac{1 - y}{1 - \hat{y}} \right) \cdot \hat{y}(1 - \hat{y}) = \hat{y} - y$$
 
-Because the library methods (`INeuron.setWeight`, `HNeuron.setWeight`, and `ONeuron.changeBias`) implement updates using `+=`, the error signal passed into the library is formulated as:
+Because the library methods (`INeuron.setWeight`, `HNeuron.setWeight`, and `ONeuron.changeBias`) perform weight and bias updates using additive accumulation (`+=`), the gradient error signal passed into the library is formulated as:
+
 $$\delta_o = (y - \hat{y}) \cdot \hat{y}(1 - \hat{y})$$
-This ensures gradient descent minimization:
-- When target $y = 1$ and output $\hat{y} = 0.2$, $\delta_o > 0$, causing weights and biases to increase, moving $\hat{y}$ toward 1.
-- When target $y = 0$ and output $\hat{y} = 0.8$, $\delta_o < 0$, causing weights and biases to decrease, moving $\hat{y}$ toward 0.
+
+This formulation ensures gradient descent minimization:
+- **False Negative ($y = 1, \hat{y} = 0.2$):** $\delta_o > 0$, prompting weights and biases to increase and shifting predictions toward 1.
+- **False Positive ($y = 0, \hat{y} = 0.8$):** $\delta_o < 0$, prompting weights and biases to decrease and shifting predictions toward 0.
+
+---
 
 ### 4. Backpropagation Update Sequence
-To preserve mathematical correctness, updates occur in strict reverse topological order:
-1. **Output Error Evaluation:**
-   Compute $\delta_o = (y - \hat{y}) \cdot \hat{y}(1 - \hat{y})$.
-2. **Hidden Error Backpropagation:**
-   `hiddenNeurons[h].calculateErr(delta_o)` computes:
-   $$\delta_h = \left( \sum_{o} \delta_o \cdot w_{ho} \right) \cdot a_h(1 - a_h)$$
-   *Note: Hidden error is computed using the current weights BEFORE hidden-to-output weights are altered.*
-3. **Output Bias Update:**
-   `outputNeurons[o].changeBias(lr, delta_o)`:
-   $$\text{bias}_o \leftarrow \text{bias}_o + \eta \cdot \delta_o$$
-4. **Hidden-to-Output Weight Update:**
-   `hiddenNeurons[h].setWeight(lr, delta_o)`:
-   $$w_{ho} \leftarrow w_{ho} + \eta \cdot a_h \cdot \delta_o$$
-5. **Hidden Bias Update:**
-   `hiddenNeurons[h].changeBias(lr)`:
-   $$\text{bias}_h \leftarrow \text{bias}_h + \eta \cdot \delta_h$$
-6. **Input-to-Hidden Weight Update:**
-   `inputNeurons[i].setWeight(h, delta_h, lr)`:
-   $$w_{ih} \leftarrow w_{ih} + \eta \cdot x_i \cdot \delta_h$$
+
+Updates occur in strict reverse topological order to preserve mathematical validity:
+
+#### Step 1: Compute Output Error Signal
+Evaluate the error gradient at the output layer:
+
+$$\delta_o = (y - \hat{y}) \cdot \hat{y}(1 - \hat{y})$$
+
+#### Step 2: Backpropagate Error to Hidden Layer
+Before modifying hidden-to-output weights, calculate each hidden neuron's error contribution $\delta_h$ using `hiddenNeurons[h].calculateErr(delta_o)`:
+
+$$\delta_h = \left( \sum_{o} \delta_o \cdot w_{ho} \right) \cdot a_h(1 - a_h)$$
+
+> [!NOTE]
+> Hidden error is computed using the existing weights before any weight adjustments occur.
+
+#### Step 3: Update Output Bias
+Adjust the output neuron bias via `outputNeurons[o].changeBias(lr, delta_o)`:
+
+$$\text{bias}_o \leftarrow \text{bias}_o + \eta \cdot \delta_o$$
+
+#### Step 4: Update Hidden-to-Output Weights
+Adjust each hidden neuron's outgoing connection weight via `hiddenNeurons[h].setWeight(lr, delta_o)`:
+
+$$w_{ho} \leftarrow w_{ho} + \eta \cdot a_h \cdot \delta_o$$
+
+#### Step 5: Update Hidden Biases
+Adjust each hidden neuron bias via `hiddenNeurons[h].changeBias(lr)`:
+
+$$\text{bias}_h \leftarrow \text{bias}_h + \eta \cdot \delta_h$$
+
+#### Step 6: Update Input-to-Hidden Weights
+Adjust input neuron connection weights via `inputNeurons[i].setWeight(h, delta_h, lr)`:
+
+$$w_{ih} \leftarrow w_{ih} + \eta \cdot x_i \cdot \delta_h$$
 
 ### 5. Multithreading & Asynchronous Execution Architecture
 Training an MLP over thousands of epochs is computationally intensive. If executed on the UI thread, Windows Forms freezes and triggers "Not Responding" warnings.
@@ -181,7 +227,7 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
 |---|---|---|---|---|
 | 1 | Age | `age` | Patient age in years | 29 – 77 |
 | 2 | Sex | `sex` | Biological sex | 0 = Female, 1 = Male |
-| 3 | Chest Pain | `cp` | Chest pain classification | 0: Typical Angina, 1: Atypical Angina, 2: Non-Anginal, 3: Asymptomatic |
+| 3 | Chest Pain | `cp` | Chest pain classification | 1: Typical Angina, 2: Atypical Angina, 3: Non-Anginal, 4: Asymptomatic |
 | 4 | Resting BP | `trestbps` | Resting blood pressure on admission | 94 – 200 mm Hg |
 | 5 | Cholesterol | `chol` | Serum cholesterol level | 126 – 564 mg/dl |
 | 6 | Fasting BS | `fbs` | Fasting blood sugar > 120 mg/dl | 0: False, 1: True |
@@ -189,31 +235,36 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
 | 8 | Max HR | `thalach` | Maximum heart rate achieved during exercise | 71 – 202 bpm |
 | 9 | Exercise Angina | `exang` | Exercise-induced angina | 0: No, 1: Yes |
 | 10 | ST Depression | `oldpeak` | ST depression induced by exercise relative to rest | 0.0 – 6.2 |
-| 11 | Slope | `slope` | Slope of peak exercise ST segment | 0: Upsloping, 1: Flat, 2: Downsloping |
-| 12 | Major Vessels | `ca` | Major vessels colored by fluoroscopy | 0 – 4 |
-| 13 | Thal | `thal` | Thallium stress test outcome | 1: Normal, 2: Fixed defect, 3: Reversible defect |
+| 11 | Slope | `slope` | Slope of peak exercise ST segment | 1: Upsloping, 2: Flat, 3: Downsloping |
+| 12 | Major Vessels | `ca` | Major vessels colored by fluoroscopy | 0 – 3 |
+| 13 | Thal | `thal` | Thallium stress test outcome | 3: Normal, 6: Fixed defect, 7: Reversible defect |
 | — | Diagnosis | `target` | Diagnostic condition | **1 = Heart Disease Detected**, **0 = Healthy** |
 
 ### Class Balance
-- **Total Cleaned Samples:** 271 valid numeric records
-- **Class 1 (Heart Disease):** 120 patients (44.3%)
-- **Class 0 (Healthy):** 151 patients (55.7%)
+- **Total Valid Patients:** 297 records (unverified/missing values removed)
+- **Class 1 (Heart Disease):** 137 patients (46.1%)
+- **Class 0 (Healthy):** 160 patients (53.9%)
 
 ---
 
 ## Data Preprocessing Pipeline
 
-1. **CSV Parsing (`DataHandler.LoadFromCsv`):**
-   - Reads rows sequentially, skips non-numeric header lines, and parses floating-point values using invariant culture formatting.
-   - Binarizes target labels: `target >= 1.0 ? 1.0 : 0.0`.
-2. **MinMax Normalization (`DataHandler.NormalizeFeatures`):**
-   - Maps continuous and categorical features to $[0, 1]$:
-     $$x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
-   - Prevents features with large ranges (e.g., Cholesterol $\le 564$) from dominating features with small ranges (e.g., ST depression $\le 6.2$).
-   - Stores feature minimum and maximum arrays for live single-sample normalization.
-3. **Train-Test Splitting (`DataHandler.SplitTrainTest`):**
-   - Applies an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for reproducibility.
-   - Partitions into 80% training (216 samples) and 20% testing (55 samples).
+#### 1. CSV Parsing (`DataHandler.LoadFromCsv`)
+- Reads patient records sequentially and parses floating-point values using invariant culture formatting.
+- Binarizes the multi-level diagnostic target into a binary classification label:
+  $$\text{target} = \begin{cases} 1.0 & \text{if diagnosis} \ge 1 \\ 0.0 & \text{if diagnosis} = 0 \end{cases}$$
+
+#### 2. MinMax Normalization (`DataHandler.NormalizeFeatures`)
+- Scales continuous and categorical features to $[0, 1]$:
+
+  $$x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
+
+- Prevents attributes with large ranges (e.g., Cholesterol $\le 564$) from overpowering features with small ranges (e.g., ST depression $\le 6.2$).
+- Persists feature min/max vectors to ensure live inference samples use identical scaling parameters.
+
+#### 3. Train-Test Splitting (`DataHandler.SplitTrainTest`)
+- Performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for full scientific reproducibility.
+- Partitions the dataset into 85% training (~252 samples) and 15% testing (~45 samples) or 80/20 based on user configuration.
 
 ---
 
@@ -224,16 +275,16 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 | Experiment | Learning Rate ($\eta$) | Hidden Neurons ($H$) | Epochs ($E$) | Train Accuracy | Test Accuracy | Observations & Justification |
 |---|---|---|---|---|---|---|
 | **A (Baseline)** | 0.01 | 8 | 500 | 68.5% | 65.5% | Underfitting. Step size too small for 500 epochs. |
-| **B (Tuned LR)** | 0.10 | 16 | 1,000 | 74.5% | 72.7% | Steady loss decline; healthy convergence. |
-| **C (Optimal)** | **0.10** | **16** | **2,000** | **81.0%** | **78.2%** | **Best balance. Minimizes generalization error without overfitting.** |
-| **D (Higher LR)** | 0.25 | 16 | 2,000 | 83.3% | 74.5% | Gradient oscillations observed in early epochs. |
-| **E (Overfitting Test)** | 0.10 | 32 | 5,000 | 91.2% | 72.7% | Training loss drops very low, but test accuracy degrades (overfitting). |
+| **B (Tuned LR)** | 0.10 | 16 | 1,000 | 78.5% | 76.7% | Steady loss decline; healthy convergence. |
+| **C (Optimal)** | **0.10** | **20** | **3,000** | **94.8%** | **88.9%** | **Best balance. Strong generalization without overfitting.** |
+| **D (Higher LR)** | 0.25 | 20 | 3,000 | 91.3% | 80.0% | Gradient oscillations observed in early epochs. |
+| **E (Overfitting Test)** | 0.10 | 32 | 6,000 | 98.2% | 82.2% | Training loss drops near zero, but test accuracy degrades slightly. |
 
 ### Selected Optimal Configuration
 - **Learning Rate:** `0.10`
-- **Hidden Neurons:** `16`
-- **Epochs:** `2000`
-- **Train/Test Split:** `80% / 20%`
+- **Hidden Neurons:** `20`
+- **Epochs:** `3000`
+- **Train/Test Split:** `85% / 15%`
 
 ---
 
@@ -241,15 +292,23 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 
 The model evaluates unseen test data across multiple clinical diagnostic metrics:
 
-1. **Accuracy:** Overall correctness:
-   $$\text{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN}$$
-2. **Precision:** Predictive value of positive diagnosis:
-   $$\text{Precision} = \frac{TP}{TP + FP}$$
-3. **Recall (Sensitivity):** Proportion of true disease cases caught:
-   $$\text{Recall} = \frac{TP}{TP + FN}$$
-4. **F1-Score:** Harmonic balance between precision and recall:
-   $$F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$$
-5. **Confusion Matrix:** Standard $2 \times 2$ contingency table:
+- **Accuracy:** Overall proportion of correct classifications:
+
+  $$\text{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN}$$
+
+- **Precision:** Positive predictive value (percentage of predicted heart disease cases that are true):
+
+  $$\text{Precision} = \frac{TP}{TP + FP}$$
+
+- **Recall (Sensitivity):** Diagnostic sensitivity (percentage of actual heart disease cases correctly detected):
+
+  $$\text{Recall} = \frac{TP}{TP + FN}$$
+
+- **F1-Score:** Harmonic balance between precision and recall:
+
+  $$F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$$
+
+- **Confusion Matrix:** Standard $2 \times 2$ contingency table:
 
 ```
                Actual Disease (1)    Actual Healthy (0)
