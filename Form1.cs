@@ -92,44 +92,44 @@ namespace RealWorldPrediction
 
         private void btnPresetHigh_Click(object sender, EventArgs e)
         {
-            // Real sample from Cleveland dataset (Patient #1, Target = 1 - Heart Disease):
-            // 63,1,3,145,233,1,0,150,0,2.3,0,0,1 -> 1
-            SetInputValue(0, "63");       // Age
+            // Real High-Risk patient from authentic UCI Cleveland dataset (Patient #2, Target = 1 - Heart Disease):
+            // 67, 1, 4, 160, 286, 0, 2, 108, 1, 1.5, 2, 3, 3 -> 1
+            SetInputValue(0, "67");       // Age
             SetComboIndex(1, 1);          // Sex: Male
-            SetComboIndex(2, 3);          // Chest Pain: Asymptomatic
-            SetInputValue(3, "145");      // Resting BP: 145 mmHg
-            SetInputValue(4, "233");      // Cholesterol: 233 mg/dl
-            SetComboIndex(5, 1);          // Fasting BS > 120: Yes
-            SetComboIndex(6, 0);          // Resting ECG: Normal
-            SetInputValue(7, "150");      // Max HR: 150
-            SetComboIndex(8, 0);          // Exercise Angina: No
-            SetInputValue(9, "2.3");      // ST depression: 2.3
-            SetComboIndex(10, 0);         // Slope: Upsloping
-            SetComboIndex(11, 0);         // CA: 0
-            SetComboIndex(12, 0);         // Thal: Normal (index 0 = value 1)
+            SetComboIndex(2, 3);          // Chest Pain: 4 — Asymptomatic
+            SetInputValue(3, "160");      // Resting BP: 160 mmHg
+            SetInputValue(4, "286");      // Cholesterol: 286 mg/dl
+            SetComboIndex(5, 0);          // Fasting BS > 120: No
+            SetComboIndex(6, 2);          // Resting ECG: 2 — LV Hypertrophy
+            SetInputValue(7, "108");      // Max HR: 108
+            SetComboIndex(8, 1);          // Exercise Angina: 1 — Yes
+            SetInputValue(9, "1.5");      // ST depression: 1.5
+            SetComboIndex(10, 1);         // Slope: 2 — Flat
+            SetComboIndex(11, 3);         // CA: 3
+            SetComboIndex(12, 0);         // Thal: 3 — Normal
 
-            AppendLog("📋 Loaded High-Risk Patient profile (Sample #1 from dataset).\r\n");
+            AppendLog("Loaded High-Risk Patient profile (Patient #2 from UCI Cleveland dataset).\r\n");
         }
 
         private void btnPresetLow_Click(object sender, EventArgs e)
         {
-            // Real sample from Cleveland dataset (Patient #121, Target = 0 - Healthy):
-            // 67,1,0,120,229,0,0,129,1,2.6,1,2,3 -> 0
-            SetInputValue(0, "67");       // Age
+            // Real Low-Risk patient from authentic UCI Cleveland dataset (Patient #4, Target = 0 - Healthy):
+            // 37, 1, 3, 130, 250, 0, 0, 187, 0, 3.5, 3, 0, 3 -> 0
+            SetInputValue(0, "37");       // Age
             SetComboIndex(1, 1);          // Sex: Male
-            SetComboIndex(2, 0);          // Chest Pain: Typical Angina
-            SetInputValue(3, "120");      // Resting BP: 120 mmHg
-            SetInputValue(4, "229");      // Cholesterol: 229 mg/dl
+            SetComboIndex(2, 2);          // Chest Pain: 3 — Non-Anginal Pain
+            SetInputValue(3, "130");      // Resting BP: 130 mmHg
+            SetInputValue(4, "250");      // Cholesterol: 250 mg/dl
             SetComboIndex(5, 0);          // Fasting BS > 120: No
-            SetComboIndex(6, 0);          // Resting ECG: Normal
-            SetInputValue(7, "129");      // Max HR: 129
-            SetComboIndex(8, 1);          // Exercise Angina: Yes
-            SetInputValue(9, "2.6");      // ST depression: 2.6
-            SetComboIndex(10, 1);         // Slope: Flat
-            SetComboIndex(11, 2);         // CA: 2
-            SetComboIndex(12, 2);         // Thal: Reversible Defect (index 2 = value 3)
+            SetComboIndex(6, 0);          // Resting ECG: 0 — Normal
+            SetInputValue(7, "187");      // Max HR: 187
+            SetComboIndex(8, 0);          // Exercise Angina: 0 — No
+            SetInputValue(9, "3.5");      // ST depression: 3.5
+            SetComboIndex(10, 2);         // Slope: 3 — Downsloping
+            SetComboIndex(11, 0);         // CA: 0
+            SetComboIndex(12, 0);         // Thal: 3 — Normal
 
-            AppendLog("📋 Loaded Low-Risk Patient profile (Sample #121 from dataset).\r\n");
+            AppendLog("Loaded Low-Risk Patient profile (Patient #4 from UCI Cleveland dataset).\r\n");
         }
 
         private void SetInputValue(int index, string value)
@@ -410,18 +410,18 @@ namespace RealWorldPrediction
             try
             {
                 rawInputs[0] = ParseDouble(txtInputs[0], "Age");
-                rawInputs[1] = GetComboValue(txtInputs[1]);           // Sex
-                rawInputs[2] = GetComboValue(txtInputs[2]);           // Chest pain
+                rawInputs[1] = GetComboValue(txtInputs[1]);           // Sex: 0=F, 1=M
+                rawInputs[2] = GetComboValue(txtInputs[2]) + 1.0;     // Chest Pain: 1, 2, 3, 4
                 rawInputs[3] = ParseDouble(txtInputs[3], "Resting Blood Pressure");
                 rawInputs[4] = ParseDouble(txtInputs[4], "Cholesterol");
-                rawInputs[5] = GetComboValue(txtInputs[5]);           // Fasting BS
-                rawInputs[6] = GetComboValue(txtInputs[6]);           // Resting ECG
+                rawInputs[5] = GetComboValue(txtInputs[5]);           // Fasting BS: 0=No, 1=Yes
+                rawInputs[6] = GetComboValue(txtInputs[6]);           // Resting ECG: 0, 1, 2
                 rawInputs[7] = ParseDouble(txtInputs[7], "Max Heart Rate");
-                rawInputs[8] = GetComboValue(txtInputs[8]);           // Exercise Angina
+                rawInputs[8] = GetComboValue(txtInputs[8]);           // Exercise Angina: 0=No, 1=Yes
                 rawInputs[9] = ParseDouble(txtInputs[9], "ST Depression");
-                rawInputs[10] = GetComboValue(txtInputs[10]);         // Slope
-                rawInputs[11] = GetComboValue(txtInputs[11]);         // CA
-                rawInputs[12] = GetComboValue(txtInputs[12]) + 1.0;   // Thal (values are 1, 2, 3)
+                rawInputs[10] = GetComboValue(txtInputs[10]) + 1.0;   // Slope: 1, 2, 3
+                rawInputs[11] = GetComboValue(txtInputs[11]);         // CA: 0, 1, 2, 3
+                rawInputs[12] = GetThalValue(txtInputs[12]);          // Thal: 3=Normal, 6=Fixed, 7=Reversible
             }
             catch (Exception ex)
             {
@@ -481,6 +481,17 @@ namespace RealWorldPrediction
                 return cb.SelectedIndex;
             }
             return 0.0;
+        }
+
+        private double GetThalValue(Control c)
+        {
+            if (c is ComboBox cb)
+            {
+                if (cb.SelectedIndex == 0) return 3.0; // Normal
+                if (cb.SelectedIndex == 1) return 6.0; // Fixed Defect
+                if (cb.SelectedIndex == 2) return 7.0; // Reversible Defect
+            }
+            return 3.0;
         }
 
         /// <summary>

@@ -698,7 +698,7 @@ namespace RealWorldPrediction
             this.cmbCp.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.cmbCp.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(220)))), ((int)(((byte)(220)))), ((int)(((byte)(230)))));
             this.cmbCp.FormattingEnabled = true;
-            this.cmbCp.Items.AddRange(new object[] { "0 — Typical Angina", "1 — Atypical Angina", "2 — Non-Anginal", "3 — Asymptomatic" });
+            this.cmbCp.Items.AddRange(new object[] { "1 — Typical Angina", "2 — Atypical Angina", "3 — Non-Anginal Pain", "4 — Asymptomatic" });
             this.cmbCp.Location = new System.Drawing.Point(160, 128);
             this.cmbCp.Name = "cmbCp";
             this.cmbCp.Size = new System.Drawing.Size(195, 21);
@@ -886,7 +886,7 @@ namespace RealWorldPrediction
             this.cmbSlope.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.cmbSlope.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(220)))), ((int)(((byte)(220)))), ((int)(((byte)(230)))));
             this.cmbSlope.FormattingEnabled = true;
-            this.cmbSlope.Items.AddRange(new object[] { "0 — Upsloping", "1 — Flat", "2 — Downsloping" });
+            this.cmbSlope.Items.AddRange(new object[] { "1 — Upsloping", "2 — Flat", "3 — Downsloping" });
             this.cmbSlope.Location = new System.Drawing.Point(160, 416);
             this.cmbSlope.Name = "cmbSlope";
             this.cmbSlope.Size = new System.Drawing.Size(195, 21);
@@ -911,7 +911,7 @@ namespace RealWorldPrediction
             this.cmbCa.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.cmbCa.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(220)))), ((int)(((byte)(220)))), ((int)(((byte)(230)))));
             this.cmbCa.FormattingEnabled = true;
-            this.cmbCa.Items.AddRange(new object[] { "0", "1", "2", "3", "4" });
+            this.cmbCa.Items.AddRange(new object[] { "0", "1", "2", "3" });
             this.cmbCa.Location = new System.Drawing.Point(160, 452);
             this.cmbCa.Name = "cmbCa";
             this.cmbCa.Size = new System.Drawing.Size(195, 21);
@@ -936,7 +936,7 @@ namespace RealWorldPrediction
             this.cmbThal.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.cmbThal.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(220)))), ((int)(((byte)(220)))), ((int)(((byte)(230)))));
             this.cmbThal.FormattingEnabled = true;
-            this.cmbThal.Items.AddRange(new object[] { "1 — Normal", "2 — Fixed Defect", "3 — Reversible Defect" });
+            this.cmbThal.Items.AddRange(new object[] { "3 — Normal", "6 — Fixed Defect", "7 — Reversible Defect" });
             this.cmbThal.Location = new System.Drawing.Point(160, 488);
             this.cmbThal.Name = "cmbThal";
             this.cmbThal.Size = new System.Drawing.Size(195, 21);

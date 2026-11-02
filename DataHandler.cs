@@ -13,19 +13,19 @@ namespace RealWorldPrediction
     /// Task:    Binary classification — Heart Disease (1) vs No Disease (0)
     /// 
     /// Features:
-    ///   0. Age              (continuous)
+    ///   0. Age              (continuous, 29-77)
     ///   1. Sex              (binary: 1=Male, 0=Female)
-    ///   2. Chest Pain Type  (categorical: 0-3)
-    ///   3. Resting BP       (continuous, mmHg)
-    ///   4. Cholesterol      (continuous, mg/dl)
+    ///   2. Chest Pain Type  (categorical: 1=Typical Angina, 2=Atypical Angina, 3=Non-Anginal, 4=Asymptomatic)
+    ///   3. Resting BP       (continuous, 94-200 mmHg)
+    ///   4. Cholesterol      (continuous, 126-564 mg/dl)
     ///   5. Fasting BS >120  (binary: 1=True, 0=False)
-    ///   6. Resting ECG      (categorical: 0-2)
-    ///   7. Max Heart Rate   (continuous)
+    ///   6. Resting ECG      (categorical: 0=Normal, 1=ST-T Abnormality, 2=LV Hypertrophy)
+    ///   7. Max Heart Rate   (continuous, 71-202 bpm)
     ///   8. Exercise Angina  (binary: 1=Yes, 0=No)
-    ///   9. ST Depression    (continuous)
-    ///  10. Slope            (categorical: 0-2)
+    ///   9. ST Depression    (continuous, 0.0-6.2)
+    ///  10. Slope            (categorical: 1=Upsloping, 2=Flat, 3=Downsloping)
     ///  11. Major Vessels    (0-3)
-    ///  12. Thal             (categorical: 1-3)
+    ///  12. Thal             (categorical: 3=Normal, 6=Fixed Defect, 7=Reversible Defect)
     /// </summary>
     public class DataHandler
     {
@@ -52,17 +52,17 @@ namespace RealWorldPrediction
         {
             "Patient age in years (29–77)",
             "0 = Female, 1 = Male",
-            "0 = Typical Angina, 1 = Atypical Angina, 2 = Non-Anginal Pain, 3 = Asymptomatic",
+            "1 = Typical Angina, 2 = Atypical Angina, 3 = Non-Anginal Pain, 4 = Asymptomatic",
             "Resting blood pressure in mmHg (94–200)",
             "Serum cholesterol in mg/dl (126–564)",
             "0 = No, 1 = Yes (fasting blood sugar > 120 mg/dl)",
             "0 = Normal, 1 = ST-T Abnormality, 2 = LV Hypertrophy",
-            "Maximum heart rate achieved (71–202)",
+            "Maximum heart rate achieved (71–202 bpm)",
             "0 = No, 1 = Yes",
             "ST depression induced by exercise (0.0–6.2)",
-            "0 = Upsloping, 1 = Flat, 2 = Downsloping",
-            "Number of major vessels colored by fluoroscopy (0–4)",
-            "1 = Normal, 2 = Fixed Defect, 3 = Reversible Defect"
+            "1 = Upsloping, 2 = Flat, 3 = Downsloping",
+            "Number of major vessels colored by fluoroscopy (0–3)",
+            "3 = Normal, 6 = Fixed Defect, 7 = Reversible Defect"
         };
 
         // --- Data Storage ---
