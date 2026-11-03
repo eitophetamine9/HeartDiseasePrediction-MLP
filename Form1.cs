@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -15,15 +16,46 @@ namespace RealWorldPrediction
         private DataHandler dataHandler;
         private NeuralNetwork network;
         private List<TrainingEpochLog> trainingHistory;
+        private readonly object historyLock = new object();
         private bool isTraining = false;
         private System.Threading.CancellationTokenSource cts;
         private Control[] txtInputs;
+        private Panel pnlChart;
+
+        // Configuration of the most recent run, used when exporting the training log.
+        private double lastLearningRate;
+        private int lastHiddenNodes;
+        private int lastEpochs;
+        private double lastSplitRatio;
+        private int lastSeed = 42;
 
         public Form1()
         {
             InitializeComponent();
             trainingHistory = new List<TrainingEpochLog>();
+            InitializeChart();
             InitializeApplication();
+        }
+
+        /// <summary>
+        /// Creates a lightweight GDI+ chart panel below the training log. Using a plain
+        /// Panel avoids adding a Charting assembly reference while still giving a live
+        /// loss/accuracy curve.
+        /// </summary>
+        private void InitializeChart()
+        {
+            pnlChart = new Panel
+            {
+                Location = new Point(10, 430),
+                Size = new Size(508, 258),
+                BackColor = Color.FromArgb(18, 18, 28),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            pnlChart.Paint += PnlChart_Paint;
+            grpLog.Controls.Add(pnlChart);
+
+            // Shrink the log text box so it does not overlap the chart.
+            rtbLog.Size = new Size(508, 398);
         }
 
         /// <summary>
@@ -67,7 +99,6 @@ namespace RealWorldPrediction
             if (foundPath != null)
             {
                 dataHandler.LoadFromCsv(foundPath);
-                dataHandler.NormalizeFeatures();
                 dataHandler.SplitTrainTest((double)nudTrainSplit.Value / 100.0, 42);
 
                 lblDataInfo.Text = dataHandler.GetDataSummary();
@@ -173,14 +204,25 @@ namespace RealWorldPrediction
             int epochs = (int)nudEpochs.Value;
             int logInterval = (int)nudLogInterval.Value;
             double splitRatio = (double)nudTrainSplit.Value / 100.0;
+            int seed = 42;
 
-            // Re-split if ratio changed
-            dataHandler.SplitTrainTest(splitRatio, 42);
+            // Remember the configuration for CSV export.
+            lastLearningRate = lr;
+            lastHiddenNodes = hiddenCount;
+            lastEpochs = epochs;
+            lastSplitRatio = splitRatio;
+            lastSeed = seed;
+
+            // Re-split and re-fit normalization on the training portion only.
+            dataHandler.SplitTrainTest(splitRatio, seed);
             lblDataInfo.Text = dataHandler.GetDataSummary();
 
             // Instantiate network: 13 inputs -> hiddenCount -> 1 output
-            network = new NeuralNetwork(dataHandler.FeatureCount, hiddenCount, dataHandler.OutputCount, lr);
-            trainingHistory.Clear();
+            network = new NeuralNetwork(dataHandler.FeatureCount, hiddenCount, dataHandler.OutputCount, lr, seed);
+            lock (historyLock)
+            {
+                trainingHistory.Clear();
+            }
             cts = new System.Threading.CancellationTokenSource();
 
             // UI state updates
@@ -188,8 +230,10 @@ namespace RealWorldPrediction
             btnTrain.Enabled = false;
             btnStop.Enabled = true;
             btnReset.Enabled = false;
+            btnExportLog.Enabled = false;
             progressBar.Value = 0;
             progressBar.Maximum = epochs;
+            pnlChart.Invalidate();
 
             AppendLog("═════════════════════════════════════════════════════════\r\n");
             AppendLog($"  STARTING MULTITHREADED TRAINING SESSION\r\n");
@@ -197,6 +241,8 @@ namespace RealWorldPrediction
             AppendLog($"  Learning Rate:  {lr:F4}\r\n");
             AppendLog($"  Total Epochs:   {epochs:N0}\r\n");
             AppendLog($"  Train / Test:   {dataHandler.TrainFeatures.Count} / {dataHandler.TestFeatures.Count} samples\r\n");
+            AppendLog($"  Loss:           Binary Cross-Entropy (BCE)\r\n");
+            AppendLog($"  Init Seed:      {seed}\r\n");
             AppendLog("═════════════════════════════════════════════════════════\r\n");
 
             DateTime startTime = DateTime.Now;
@@ -210,7 +256,10 @@ namespace RealWorldPrediction
                     var token = cts.Token;
                     var trainFeatures = dataHandler.TrainFeatures;
                     var trainLabels = dataHandler.TrainLabels;
+                    var testFeatures = dataHandler.TestFeatures;
+                    var testLabels = dataHandler.TestLabels;
                     int sampleCount = trainFeatures.Count;
+                    int testCount = testFeatures.Count;
 
                     for (int epoch = 1; epoch <= epochs; epoch++)
                     {
@@ -244,22 +293,46 @@ namespace RealWorldPrediction
                             }
                             double trainAcc = (double)correct / sampleCount * 100.0;
 
+                            // Test metrics are logged for monitoring only; the model is not
+                            // selected or tuned using this split.
+                            double testLossSum = 0.0;
+                            int testCorrect = 0;
+                            for (int s = 0; s < testCount; s++)
+                            {
+                                double pred = network.Predict(testFeatures[s])[0];
+                                int predictedClass = pred >= 0.5 ? 1 : 0;
+                                int actualClass = (int)testLabels[s][0];
+                                if (predictedClass == actualClass) testCorrect++;
+
+                                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, pred));
+                                testLossSum += -(actualClass * Math.Log(p) + (1 - actualClass) * Math.Log(1.0 - p));
+                            }
+                            double testAcc = testCount > 0 ? (double)testCorrect / testCount * 100.0 : 0.0;
+                            double testLoss = testCount > 0 ? testLossSum / testCount : 0.0;
+
                             var logEntry = new TrainingEpochLog
                             {
                                 Epoch = epoch,
                                 Loss = avgLoss,
-                                Accuracy = trainAcc
+                                Accuracy = trainAcc,
+                                TestLoss = testLoss,
+                                TestAccuracy = testAcc
                             };
-                            trainingHistory.Add(logEntry);
+                            lock (historyLock)
+                            {
+                                trainingHistory.Add(logEntry);
+                            }
 
                             // Asynchronously update UI without stalling the worker thread
                             this.BeginInvoke(new Action(() =>
                             {
-                                if (!this.IsDisposed && progressBar.Value < progressBar.Maximum)
+                                if (!this.IsDisposed)
                                 {
                                     progressBar.Value = Math.Min(progressBar.Maximum, epoch);
-                                    AppendLog(string.Format("  Epoch {0,5} | Loss: {1:F5} | Train Acc: {2:F2}%\r\n",
-                                        epoch, avgLoss, trainAcc));
+                                    AppendLog(string.Format(
+                                        "  Epoch {0,5} | Loss: {1:F5} | Train Acc: {2:F2}% | Test Acc: {3:F2}%\r\n",
+                                        epoch, avgLoss, trainAcc, testAcc));
+                                    pnlChart.Invalidate();
                                 }
                             }));
                         }
@@ -279,6 +352,7 @@ namespace RealWorldPrediction
 
                 // Evaluate on unseen Test Set
                 EvaluateModel();
+                pnlChart.Invalidate();
             }
             finally
             {
@@ -286,6 +360,7 @@ namespace RealWorldPrediction
                 btnTrain.Enabled = true;
                 btnStop.Enabled = false;
                 btnReset.Enabled = true;
+                btnExportLog.Enabled = true;
                 cts?.Dispose();
                 cts = null;
             }
@@ -375,8 +450,12 @@ namespace RealWorldPrediction
             if (isTraining) return;
 
             network = null;
-            trainingHistory.Clear();
+            lock (historyLock)
+            {
+                trainingHistory.Clear();
+            }
             progressBar.Value = 0;
+            pnlChart.Invalidate();
 
             lblAccValue.Text = "—";
             lblPrecValue.Text = "—";
@@ -500,7 +579,13 @@ namespace RealWorldPrediction
         /// </summary>
         private void btnExportLog_Click(object sender, EventArgs e)
         {
-            if (trainingHistory.Count == 0)
+            List<TrainingEpochLog> snapshot;
+            lock (historyLock)
+            {
+                snapshot = new List<TrainingEpochLog>(trainingHistory);
+            }
+
+            if (snapshot.Count == 0)
             {
                 MessageBox.Show("No training log history to export yet. Train the model first.",
                     "Export CSV", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -516,16 +601,122 @@ namespace RealWorldPrediction
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     var sb = new StringBuilder();
-                    sb.AppendLine("Epoch,Loss,TrainAccuracy");
-                    foreach (var entry in trainingHistory)
+                    sb.AppendLine("# Heart Disease MLP - Training Log");
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# Generated: {0:O}", DateTime.Now));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# Architecture: 13 -> {0} -> 1 (sigmoid)", lastHiddenNodes));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# LearningRate={0}", lastLearningRate));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# HiddenNodes={0}", lastHiddenNodes));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# Epochs={0}", lastEpochs));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# TrainSplit={0}", lastSplitRatio));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# Seed={0}", lastSeed));
+                    sb.AppendLine("# Loss=BinaryCrossEntropy");
+                    sb.AppendLine("Epoch,Loss,TrainAccuracy,TestLoss,TestAccuracy");
+
+                    foreach (TrainingEpochLog entry in snapshot)
                     {
-                        sb.AppendLine($"{entry.Epoch},{entry.Loss:F6},{entry.Accuracy:F2}");
+                        sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                            "{0},{1:F6},{2:F2},{3:F6},{4:F2}",
+                            entry.Epoch, entry.Loss, entry.Accuracy, entry.TestLoss, entry.TestAccuracy));
                     }
+
                     File.WriteAllText(sfd.FileName, sb.ToString());
 
                     MessageBox.Show($"Training log successfully exported to:\r\n{sfd.FileName}",
                         "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Draws the training loss and accuracy curves on the chart panel.
+        /// The loss line uses a per-run min/max scale; accuracy uses a fixed 0-100% scale.
+        /// </summary>
+        private void PnlChart_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.FromArgb(18, 18, 28));
+
+            Rectangle bounds = new Rectangle(8, 6,
+                pnlChart.ClientSize.Width - 16,
+                pnlChart.ClientSize.Height - 12);
+
+            using (Font titleFont = new Font("Segoe UI", 9F, FontStyle.Bold))
+            using (Font smallFont = new Font("Segoe UI", 7.5F))
+            using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(200, 200, 210)))
+            using (Pen gridPen = new Pen(Color.FromArgb(45, 45, 60)))
+            using (Pen lossPen = new Pen(Color.FromArgb(245, 120, 80), 2F))
+            using (Pen accPen = new Pen(Color.FromArgb(70, 200, 120), 2F))
+            {
+                g.DrawString("Loss / Accuracy vs Epoch", titleFont, textBrush, bounds.Left, bounds.Top);
+
+                Rectangle plot = new Rectangle(
+                    bounds.Left + 38,
+                    bounds.Top + 20,
+                    bounds.Width - 58,
+                    bounds.Height - 44);
+                if (plot.Width < 20 || plot.Height < 20) return;
+
+                g.DrawRectangle(gridPen, plot);
+                for (int i = 0; i <= 4; i++)
+                {
+                    int y = plot.Top + i * plot.Height / 4;
+                    g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+                }
+
+                List<TrainingEpochLog> history;
+                lock (historyLock)
+                {
+                    history = new List<TrainingEpochLog>(trainingHistory);
+                }
+
+                if (history.Count < 2)
+                {
+                    g.DrawString("Train the model to see the curve.", smallFont, textBrush,
+                        plot.Left + 10, plot.Top + 10);
+                    return;
+                }
+
+                int maxEpoch = Math.Max(1, history[history.Count - 1].Epoch);
+                double minLoss = history.Min(h => h.Loss);
+                double maxLoss = history.Max(h => h.Loss);
+                if (maxLoss - minLoss < 1e-9) maxLoss = minLoss + 1e-9;
+
+                PointF? previousLoss = null;
+                PointF? previousAccuracy = null;
+
+                foreach (TrainingEpochLog entry in history)
+                {
+                    float x = plot.Left + (float)entry.Epoch / maxEpoch * plot.Width;
+
+                    float lossY = plot.Bottom -
+                        (float)((entry.Loss - minLoss) / (maxLoss - minLoss)) * plot.Height;
+                    PointF lossPoint = new PointF(x, lossY);
+                    if (previousLoss.HasValue) g.DrawLine(lossPen, previousLoss.Value, lossPoint);
+                    previousLoss = lossPoint;
+
+                    float accY = plot.Bottom - (float)(entry.Accuracy / 100.0) * plot.Height;
+                    PointF accPoint = new PointF(x, accY);
+                    if (previousAccuracy.HasValue) g.DrawLine(accPen, previousAccuracy.Value, accPoint);
+                    previousAccuracy = accPoint;
+                }
+
+                g.DrawString("0", smallFont, textBrush, plot.Left - 10, plot.Bottom - 6);
+                g.DrawString(maxEpoch.ToString(), smallFont, textBrush, plot.Right - 20, plot.Bottom + 2);
+                g.DrawString($"{maxLoss:F3}", smallFont, textBrush, plot.Left - 34, plot.Top - 4);
+                g.DrawString($"{minLoss:F3}", smallFont, textBrush, plot.Left - 34, plot.Bottom - 6);
+
+                g.DrawLine(lossPen, plot.Right - 82, plot.Top + 6, plot.Right - 68, plot.Top + 6);
+                g.DrawString("Loss", smallFont, textBrush, plot.Right - 64, plot.Top - 1);
+                g.DrawLine(accPen, plot.Right - 82, plot.Top + 20, plot.Right - 68, plot.Top + 20);
+                g.DrawString("Acc", smallFont, textBrush, plot.Right - 64, plot.Top + 13);
             }
         }
 

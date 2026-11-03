@@ -171,7 +171,7 @@ namespace RealWorldPrediction
             this.nudLearningRate.Minimum = new decimal(new int[] { 1, 0, 0, 262144 });
             this.nudLearningRate.Name = "nudLearningRate";
             this.nudLearningRate.Size = new System.Drawing.Size(100, 23);
-            this.nudLearningRate.Value = new decimal(new int[] { 1, 0, 0, 65536 });
+            this.nudLearningRate.Value = new decimal(new int[] { 1, 0, 0, 131072 });
 
             // 
             // lblHiddenNodes
@@ -196,7 +196,7 @@ namespace RealWorldPrediction
             this.nudHiddenNodes.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
             this.nudHiddenNodes.Name = "nudHiddenNodes";
             this.nudHiddenNodes.Size = new System.Drawing.Size(100, 23);
-            this.nudHiddenNodes.Value = new decimal(new int[] { 16, 0, 0, 0 });
+            this.nudHiddenNodes.Value = new decimal(new int[] { 8, 0, 0, 0 });
 
             // 
             // lblEpochs
@@ -222,7 +222,7 @@ namespace RealWorldPrediction
             this.nudEpochs.Minimum = new decimal(new int[] { 100, 0, 0, 0 });
             this.nudEpochs.Name = "nudEpochs";
             this.nudEpochs.Size = new System.Drawing.Size(100, 23);
-            this.nudEpochs.Value = new decimal(new int[] { 2000, 0, 0, 0 });
+            this.nudEpochs.Value = new decimal(new int[] { 500, 0, 0, 0 });
 
             // 
             // lblTrainSplit
@@ -247,7 +247,7 @@ namespace RealWorldPrediction
             this.nudTrainSplit.Minimum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudTrainSplit.Name = "nudTrainSplit";
             this.nudTrainSplit.Size = new System.Drawing.Size(100, 23);
-            this.nudTrainSplit.Value = new decimal(new int[] { 80, 0, 0, 0 });
+            this.nudTrainSplit.Value = new decimal(new int[] { 85, 0, 0, 0 });
 
             // 
             // lblLogInterval
@@ -273,7 +273,7 @@ namespace RealWorldPrediction
             this.nudLogInterval.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudLogInterval.Name = "nudLogInterval";
             this.nudLogInterval.Size = new System.Drawing.Size(100, 23);
-            this.nudLogInterval.Value = new decimal(new int[] { 100, 0, 0, 0 });
+            this.nudLogInterval.Value = new decimal(new int[] { 25, 0, 0, 0 });
 
             // 
             // grpTraining

@@ -1,17 +1,25 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
 namespace RealWorldPrediction
 {
     /// <summary>
-    /// Handles loading, parsing, normalization, and train-test splitting 
+    /// Handles loading, parsing, normalization, and train-test splitting
     /// of the Cleveland Heart Disease dataset.
-    /// 
-    /// Dataset: UCI Cleveland Heart Disease (303 samples, 13 features)
+    ///
+    /// Dataset: UCI Cleveland Heart Disease (303 raw samples, 13 features;
+    ///          297 samples remain after removing records with missing values)
     /// Task:    Binary classification — Heart Disease (1) vs No Disease (0)
-    /// 
+    ///
+    /// Preprocessing order is deliberately leak-free:
+    ///   1. Parse the raw CSV into <see cref="AllFeatures"/> / <see cref="AllLabels"/>.
+    ///   2. Shuffle and split the RAW rows into train/test.
+    ///   3. Fit the MinMax min/max values on the TRAIN split only.
+    ///   4. Transform train and test with those train-derived parameters.
+    ///
     /// Features:
     ///   0. Age              (continuous, 29-77)
     ///   1. Sex              (binary: 1=Male, 0=Female)
@@ -65,16 +73,17 @@ namespace RealWorldPrediction
             "3 = Normal, 6 = Fixed Defect, 7 = Reversible Defect"
         };
 
-        // --- Data Storage ---
+        // --- Raw data (never normalized in place) ---
         public List<double[]> AllFeatures { get; private set; }
         public List<double[]> AllLabels { get; private set; }
 
+        // --- Normalized, split data ---
         public List<double[]> TrainFeatures { get; private set; }
         public List<double[]> TrainLabels { get; private set; }
         public List<double[]> TestFeatures { get; private set; }
         public List<double[]> TestLabels { get; private set; }
 
-        // --- Normalization Parameters (MinMax scaling to [0,1]) ---
+        // --- Normalization Parameters (fit on the training split only) ---
         public double[] FeatureMin { get; private set; }
         public double[] FeatureMax { get; private set; }
 
@@ -87,9 +96,10 @@ namespace RealWorldPrediction
         /// <summary>
         /// Loads the Heart Disease dataset from a CSV file.
         /// Expected format: age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,target
-        /// First line is treated as a header if non-numeric.
+        /// The first line is treated as a header if its first value is non-numeric.
+        /// Rows containing missing or non-numeric values are skipped.
         /// </summary>
-        /// <param name="csvPath">Path to the heart.csv file</param>
+        /// <param name="csvPath">Path to the heart.csv file.</param>
         public void LoadFromCsv(string csvPath)
         {
             AllFeatures = new List<double[]>();
@@ -104,17 +114,16 @@ namespace RealWorldPrediction
                 string[] parts = line.Split(',');
                 if (parts.Length < 14) continue;
 
-                // Skip header row (first value won't parse as a number)
-                if (!double.TryParse(parts[0].Trim(), out double firstVal))
+                // Skip header row (first value won't parse as a number).
+                if (!double.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double firstVal))
                     continue;
 
-                // Parse all 13 features
                 double[] features = new double[13];
                 features[0] = firstVal;
                 bool valid = true;
                 for (int i = 1; i < 13; i++)
                 {
-                    if (!double.TryParse(parts[i].Trim(), out features[i]))
+                    if (!double.TryParse(parts[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out features[i]))
                     {
                         valid = false;
                         break;
@@ -122,8 +131,7 @@ namespace RealWorldPrediction
                 }
                 if (!valid) continue;
 
-                // Parse target (last column)
-                if (!double.TryParse(parts[13].Trim(), out double target))
+                if (!double.TryParse(parts[13].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double target))
                     continue;
 
                 AllFeatures.Add(features);
@@ -132,66 +140,22 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Performs MinMax normalization, scaling every feature to the range [0, 1].
-        /// Formula: x_normalized = (x - min) / (max - min)
-        /// Stores min/max values for later use when normalizing user input.
+        /// Splits the raw data into training and testing sets using a Fisher-Yates shuffle,
+        /// then fits MinMax normalization on the training split only and transforms both
+        /// splits with those parameters.
         /// </summary>
-        public void NormalizeFeatures()
+        /// <param name="trainRatio">Fraction of data for training (default 0.85 = 85%).</param>
+        /// <param name="seed">Random seed for reproducible splitting (default 42).</param>
+        public void SplitTrainTest(double trainRatio = 0.85, int seed = 42)
         {
             if (AllFeatures == null || AllFeatures.Count == 0) return;
+            if (trainRatio <= 0.0 || trainRatio >= 1.0)
+                throw new ArgumentOutOfRangeException(nameof(trainRatio), "Train ratio must be between 0 and 1.");
 
-            int count = AllFeatures[0].Length;
-            FeatureMin = new double[count];
-            FeatureMax = new double[count];
-
-            // Step 1: Find min and max for each feature column
-            for (int f = 0; f < count; f++)
-            {
-                FeatureMin[f] = AllFeatures.Min(row => row[f]);
-                FeatureMax[f] = AllFeatures.Max(row => row[f]);
-            }
-
-            // Step 2: Apply MinMax scaling to all samples
-            for (int i = 0; i < AllFeatures.Count; i++)
-            {
-                for (int f = 0; f < count; f++)
-                {
-                    double range = FeatureMax[f] - FeatureMin[f];
-                    AllFeatures[i][f] = range > 0
-                        ? (AllFeatures[i][f] - FeatureMin[f]) / range
-                        : 0.0;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Normalizes a single raw input vector using the stored min/max parameters.
-        /// Used when the user enters patient data for prediction.
-        /// </summary>
-        public double[] NormalizeSingle(double[] rawInput)
-        {
-            double[] normalized = new double[rawInput.Length];
-            for (int f = 0; f < rawInput.Length; f++)
-            {
-                double range = FeatureMax[f] - FeatureMin[f];
-                normalized[f] = range > 0
-                    ? (rawInput[f] - FeatureMin[f]) / range
-                    : 0.0;
-            }
-            return normalized;
-        }
-
-        /// <summary>
-        /// Splits data into training and testing sets using Fisher-Yates shuffle.
-        /// </summary>
-        /// <param name="trainRatio">Fraction of data for training (default 0.8 = 80%)</param>
-        /// <param name="seed">Random seed for reproducible results</param>
-        public void SplitTrainTest(double trainRatio = 0.8, int seed = 42)
-        {
             int total = AllFeatures.Count;
             int trainSize = (int)(total * trainRatio);
 
-            // Fisher-Yates shuffle for unbiased randomization
+            // Fisher-Yates shuffle for unbiased randomization.
             int[] indices = Enumerable.Range(0, total).ToArray();
             Random rng = new Random(seed);
             for (int i = total - 1; i > 0; i--)
@@ -202,7 +166,8 @@ namespace RealWorldPrediction
                 indices[j] = temp;
             }
 
-            // Partition into train and test sets
+            // Copy raw rows into train/test. AllFeatures stays untouched so the
+            // split can be repeated with a different ratio without double-normalizing.
             TrainFeatures = new List<double[]>();
             TrainLabels = new List<double[]>();
             TestFeatures = new List<double[]>();
@@ -213,15 +178,78 @@ namespace RealWorldPrediction
                 int idx = indices[i];
                 if (i < trainSize)
                 {
-                    TrainFeatures.Add(AllFeatures[idx]);
-                    TrainLabels.Add(AllLabels[idx]);
+                    TrainFeatures.Add((double[])AllFeatures[idx].Clone());
+                    TrainLabels.Add((double[])AllLabels[idx].Clone());
                 }
                 else
                 {
-                    TestFeatures.Add(AllFeatures[idx]);
-                    TestLabels.Add(AllLabels[idx]);
+                    TestFeatures.Add((double[])AllFeatures[idx].Clone());
+                    TestLabels.Add((double[])AllLabels[idx].Clone());
                 }
             }
+
+            FitNormalizationOnTrain();
+            NormalizeRows(TrainFeatures);
+            NormalizeRows(TestFeatures);
+        }
+
+        /// <summary>
+        /// Computes per-feature min/max values using only the training split.
+        /// </summary>
+        private void FitNormalizationOnTrain()
+        {
+            int count = TrainFeatures[0].Length;
+            FeatureMin = new double[count];
+            FeatureMax = new double[count];
+
+            for (int f = 0; f < count; f++)
+            {
+                FeatureMin[f] = TrainFeatures.Min(row => row[f]);
+                FeatureMax[f] = TrainFeatures.Max(row => row[f]);
+            }
+        }
+
+        /// <summary>
+        /// Applies the stored MinMax parameters to each row in place.
+        /// </summary>
+        private void NormalizeRows(List<double[]> rows)
+        {
+            foreach (double[] row in rows)
+            {
+                for (int f = 0; f < row.Length; f++)
+                {
+                    double range = FeatureMax[f] - FeatureMin[f];
+                    row[f] = range > 0.0
+                        ? (row[f] - FeatureMin[f]) / range
+                        : 0.0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Normalizes a single raw input vector using the training-derived min/max
+        /// parameters. Values outside the training range are clipped to [0, 1] so
+        /// live predictions cannot push the network into saturation.
+        /// </summary>
+        public double[] NormalizeSingle(double[] rawInput)
+        {
+            if (rawInput == null) throw new ArgumentNullException(nameof(rawInput));
+            if (FeatureMin == null || FeatureMax == null)
+                throw new InvalidOperationException("Normalization parameters are not fitted. Call SplitTrainTest first.");
+            if (rawInput.Length != FeatureMin.Length)
+                throw new ArgumentException(
+                    $"Expected {FeatureMin.Length} features but received {rawInput.Length}.", nameof(rawInput));
+
+            double[] normalized = new double[rawInput.Length];
+            for (int f = 0; f < rawInput.Length; f++)
+            {
+                double range = FeatureMax[f] - FeatureMin[f];
+                double value = range > 0.0
+                    ? (rawInput[f] - FeatureMin[f]) / range
+                    : 0.0;
+                normalized[f] = Math.Max(0.0, Math.Min(1.0, value));
+            }
+            return normalized;
         }
 
         /// <summary>
@@ -240,9 +268,8 @@ namespace RealWorldPrediction
                    $"Features:           {FeatureCount}\r\n" +
                    $"Train Samples:      {TrainFeatures?.Count ?? 0}\r\n" +
                    $"Test Samples:       {TestFeatures?.Count ?? 0}\r\n" +
-                   $"Normalization:      MinMax [0, 1]\r\n" +
+                   $"Normalization:      MinMax [0, 1] (fit on train)\r\n" +
                    $"══════════════════════════════════";
         }
     }
 }
-
