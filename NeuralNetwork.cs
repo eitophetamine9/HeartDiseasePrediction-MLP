@@ -1,14 +1,12 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Backprop;
 
 namespace RealWorldPrediction
 {
     /// <summary>
-    /// 3-Layer Multi-Layer Perceptron (Input → Hidden → Output) using the
-    /// unmodified backneural library classes: INeuron, HNeuron, ONeuron.
-    /// Supports binary classification with Sigmoid activation.
+    /// Multi-Layer Perceptron wrapper that integrates the core Backprop.NeuralNet engine
+    /// from BackNeural 1.cs with high-level training, prediction, loss calculation,
+    /// and model serialization capabilities for the Windows Forms application.
     /// </summary>
     public class NeuralNetwork
     {
@@ -17,13 +15,16 @@ namespace RealWorldPrediction
         private readonly int hiddenCount;
         private readonly int outputCount;
 
-        // --- Neuron Arrays (from Backprop namespace) ---
-        private INeuron[] inputNeurons;
-        private HNeuron[] hiddenNeurons;
-        private ONeuron[] outputNeurons;
+        // --- Core NeuralNet Engine (from Backprop namespace in BackNeural 1.cs) ---
+        private NeuralNet neuralNet;
 
         // --- Hyperparameters ---
         public double LearningRate { get; set; }
+
+        /// <summary>
+        /// Gets the underlying Backprop.NeuralNet instance.
+        /// </summary>
+        public NeuralNet InternalNet => neuralNet;
 
         /// <summary>
         /// Creates a new neural network with the specified layer dimensions.
@@ -43,151 +44,64 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Initializes all neuron layers with random weights and appropriate sizes.
+        /// Initializes the Backprop.NeuralNet instance with layer dimensions.
         /// </summary>
         private void InitializeNetwork()
         {
-            // Input layer: each INeuron has weights connected to all hidden neurons
-            inputNeurons = new INeuron[inputCount];
-            for (int i = 0; i < inputCount; i++)
-            {
-                inputNeurons[i] = new INeuron(i, hiddenCount);
-            }
-
-            // Hidden layer: each HNeuron has weights connected to all output neurons
-            hiddenNeurons = new HNeuron[hiddenCount];
-            for (int h = 0; h < hiddenCount; h++)
-            {
-                hiddenNeurons[h] = new HNeuron(h, outputCount);
-            }
-
-            // Output layer: each ONeuron stores its bias and output activation
-            outputNeurons = new ONeuron[outputCount];
-            for (int o = 0; o < outputCount; o++)
-            {
-                outputNeurons[o] = new ONeuron(o);
-            }
+            neuralNet = new NeuralNet(inputCount, hiddenCount, outputCount);
         }
 
         /// <summary>
-        /// Standard Sigmoid activation function: σ(z) = 1 / (1 + e^(-z))
-        /// </summary>
-        private double Sigmoid(double z)
-        {
-            // Clamp to avoid numerical overflow in Math.Exp
-            if (z < -45.0) return 0.0;
-            if (z > 45.0) return 1.0;
-            return 1.0 / (1.0 + Math.Exp(-z));
-        }
-
-        /// <summary>
-        /// Forward pass: feeds inputs through the 3 layers and returns the final output activations.
+        /// Forward pass: feeds inputs into the neural network and returns output activations.
+        /// Uses Backprop.NeuralNet.run() to propagate signals through hidden and output layers.
         /// </summary>
         /// <param name="inputs">Array of normalized input features [0, 1]</param>
         /// <returns>Array of predicted probabilities [0, 1]</returns>
         public double[] ForwardPass(double[] inputs)
         {
-            // 1. Feed inputs into the input layer
             for (int i = 0; i < inputCount; i++)
             {
-                inputNeurons[i].setInput(inputs[i]);
+                neuralNet.setInputs(i, inputs[i]);
             }
 
-            // 2. Compute hidden layer activations: a_h = σ(bias_h + Σ x_i * w_ih)
-            for (int h = 0; h < hiddenCount; h++)
-            {
-                double sum = hiddenNeurons[h].getBias();
-                for (int i = 0; i < inputCount; i++)
-                {
-                    sum += inputNeurons[i].getInput() * inputNeurons[i].getWeight(h);
-                }
-                hiddenNeurons[h].setHactivation(Sigmoid(sum));
-            }
+            neuralNet.run();
 
-            // 3. Compute output layer activations: a_o = σ(bias_o + Σ a_h * w_ho)
-            for (int o = 0; o < outputCount; o++)
-            {
-                double sum = outputNeurons[o].getBias();
-                for (int h = 0; h < hiddenCount; h++)
-                {
-                    sum += hiddenNeurons[h].getHactivation() * hiddenNeurons[h].getWeight(o);
-                }
-                outputNeurons[o].setOActivation(Sigmoid(sum));
-            }
-
-            // 4. Return output values
             double[] result = new double[outputCount];
             for (int o = 0; o < outputCount; o++)
             {
-                result[o] = outputNeurons[o].getOActivation();
+                result[o] = neuralNet.getOuputData(o);
             }
             return result;
         }
 
         /// <summary>
-        /// Backward pass (Backpropagation):
-        /// Computes error gradients and applies weight updates through the network.
-        /// Compatible with INeuron, HNeuron, and ONeuron methods.
-        /// </summary>
-        /// <param name="targets">Ground-truth label array</param>
-        public void Backpropagate(double[] targets)
-        {
-            // Step 1: Compute output layer error signal: δ_o = (target - output) * output * (1 - output)
-            double[] outputErrors = new double[outputCount];
-            for (int o = 0; o < outputCount; o++)
-            {
-                double output = outputNeurons[o].getOActivation();
-                outputErrors[o] = (targets[o] - output) * output * (1.0 - output);
-            }
-
-            // Step 2: Calculate hidden layer errors BEFORE modifying hidden weights
-            for (int h = 0; h < hiddenCount; h++)
-            {
-                hiddenNeurons[h].calculateErr(outputErrors);
-            }
-
-            // Step 3: Update output layer biases: bias_o += lr * δ_o
-            for (int o = 0; o < outputCount; o++)
-            {
-                outputNeurons[o].changeBias(LearningRate, outputErrors);
-            }
-
-            // Step 4: Update hidden-to-output weights: w_ho += lr * a_h * δ_o
-            for (int h = 0; h < hiddenCount; h++)
-            {
-                hiddenNeurons[h].setWeight(LearningRate, outputErrors);
-            }
-
-            // Step 5: Update hidden layer biases: bias_h += lr * δ_h
-            for (int h = 0; h < hiddenCount; h++)
-            {
-                hiddenNeurons[h].changeBias(LearningRate);
-            }
-
-            // Step 6: Update input-to-hidden weights: w_ih += lr * δ_h * x_i
-            for (int i = 0; i < inputCount; i++)
-            {
-                for (int h = 0; h < hiddenCount; h++)
-                {
-                    double hiddenError = hiddenNeurons[h].getErr();
-                    inputNeurons[i].setWeight(h, hiddenError, LearningRate);
-                }
-            }
-        }
-
-        /// <summary>
         /// Trains the network on a single training example and computes Binary Cross-Entropy loss.
+        /// Invokes Backprop.NeuralNet.learn() which executes the forward pass, calculates
+        /// error derivatives, and applies gradient updates across all layers.
         /// </summary>
+        /// <param name="inputs">Array of normalized input features</param>
+        /// <param name="targets">Array of ground truth targets (1.0 or 0.0)</param>
+        /// <returns>Binary Cross-Entropy loss for this sample</returns>
         public double TrainSample(double[] inputs, double[] targets)
         {
-            double[] outputs = ForwardPass(inputs);
-            Backpropagate(targets);
+            for (int i = 0; i < inputCount; i++)
+            {
+                neuralNet.setInputs(i, inputs[i]);
+            }
+            for (int o = 0; o < outputCount; o++)
+            {
+                neuralNet.setDesiredOutput(o, targets[o]);
+            }
 
-            // Binary Cross-Entropy loss: L = -[y*log(p) + (1-y)*log(1-p)]
+            // Executes forward pass, error backpropagation, and weight/bias updates
+            neuralNet.learn();
+
+            // Compute Binary Cross-Entropy loss: L = -[y*log(p) + (1-y)*log(1-p)]
             double loss = 0.0;
             for (int o = 0; o < outputCount; o++)
             {
-                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, outputs[o]));
+                double output = neuralNet.getOuputData(o);
+                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, output));
                 loss += -(targets[o] * Math.Log(p) + (1.0 - targets[o]) * Math.Log(1.0 - p));
             }
             return loss / outputCount;
@@ -202,11 +116,27 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Re-initializes all weights and biases.
+        /// Re-initializes all weights and biases by creating a new NeuralNet instance.
         /// </summary>
         public void Reset()
         {
             InitializeNetwork();
+        }
+
+        /// <summary>
+        /// Saves all network weights and biases to a text file using NeuralNet.saveWeights.
+        /// </summary>
+        public void SaveWeights(string path)
+        {
+            neuralNet.saveWeights(path);
+        }
+
+        /// <summary>
+        /// Loads network weights and biases from a text file using NeuralNet.loadWeights.
+        /// </summary>
+        public void LoadWeights(string path)
+        {
+            neuralNet.loadWeights(path);
         }
     }
 }

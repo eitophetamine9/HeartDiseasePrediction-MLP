@@ -6,7 +6,7 @@
 [![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visualstudio&logoColor=white)](https://visualstudio.microsoft.com/)
 [![UCI Machine Learning Repository](https://img.shields.io/badge/UCI_Repository-Heart_Disease-4B6584?style=for-the-badge&logo=databricks&logoColor=white)](https://archive.ics.uci.edu/dataset/45/heart+disease)
 
-A standalone Windows Forms (.NET Framework 4.8) machine learning application built with a custom 3-layer Multi-Layer Perceptron (MLP) neural network using the original `INeuron`, `HNeuron`, and `ONeuron` classes from the `Backprop` library without modification.
+A standalone Windows Forms (.NET Framework 4.8) machine learning application built with a custom 3-layer Multi-Layer Perceptron (MLP) neural network integrating the core `NeuralNet` engine alongside `INeuron`, `HNeuron`, and `ONeuron` classes from the `Backprop` library without modification.
 
 ---
 
@@ -324,6 +324,7 @@ Pred Healthy:        FN                     TN
 ```
 RealWorldPrediction/
 ├── backneural libraries/
+│   ├── BackNeural 1.cs           Unmodified core NeuralNet library class
 │   ├── InputN 1.cs               Unmodified input neuron library class
 │   ├── HiddenN 1.cs              Unmodified hidden neuron library class
 │   └── OuputN 1.cs               Unmodified output neuron library class

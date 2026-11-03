@@ -57,6 +57,7 @@
     <Compile Include="DataHandler.cs" />
     <Compile Include="NeuralNetwork.cs" />
     <Compile Include="TrainingEpochLog.cs" />
+    <Compile Include="backneural libraries\BackNeural 1.cs" />
     <Compile Include="backneural libraries\HiddenN 1.cs" />
     <Compile Include="backneural libraries\InputN 1.cs" />
     <Compile Include="backneural libraries\OuputN 1.cs" />
