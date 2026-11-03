@@ -251,20 +251,21 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
 
 #### 1. CSV Parsing (`DataHandler.LoadFromCsv`)
 - Reads patient records sequentially and parses floating-point values using invariant culture formatting.
-- Binarizes the multi-level diagnostic target into a binary classification label:
-  $$\text{target} = \begin{cases} 1.0 & \text{if diagnosis} \ge 1 \\ 0.0 & \text{if diagnosis} = 0 \end{cases}$$
+- Converts the multi-level clinical diagnosis (0 = no disease, 1–4 = severity degrees) into a binary target:
+  - **`target = 1.0`** if diagnosis $\ge 1$ (Heart Disease Detected)
+  - **`target = 0.0`** if diagnosis $= 0$ (Healthy / No Heart Disease)
 
 #### 2. MinMax Normalization (`DataHandler.NormalizeFeatures`)
-- Scales continuous and categorical features to $[0, 1]$:
+Scales continuous and categorical features into the unit interval $[0, 1]$:
 
-  $$x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
+$$x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
 
-- Prevents attributes with large ranges (e.g., Cholesterol $\le 564$) from overpowering features with small ranges (e.g., ST depression $\le 6.2$).
-- Persists feature min/max vectors to ensure live inference samples use identical scaling parameters.
+- Prevents attributes with large numeric scales (e.g., Cholesterol $\le 564$) from overpowering features with small scales (e.g., ST depression $\le 6.2$).
+- Persists feature min/max vectors so live user input uses identical scaling parameters during inference.
 
 #### 3. Train-Test Splitting (`DataHandler.SplitTrainTest`)
-- Performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for full scientific reproducibility.
-- Partitions the dataset into 85% training (~252 samples) and 15% testing (~45 samples) or 80/20 based on user configuration.
+- Performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for scientific reproducibility.
+- Partitions the dataset into 85% training (~252 samples) and 15% testing (~45 samples), or according to the user-selected split percentage.
 
 ---
 
