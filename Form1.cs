@@ -31,6 +31,13 @@ namespace RealWorldPrediction
         private int lastBestEpoch;
         private int lastSeed = 42;
 
+        // Decision threshold is tuned on the validation split, then frozen for test
+        // evaluation and live predictions.
+        private double decisionThreshold = 0.5;
+        private double lastValidationAuc;
+        private double lastTestAuc;
+        private double lastYoudenJ;
+
         public Form1()
         {
             InitializeComponent();
@@ -382,7 +389,9 @@ namespace RealWorldPrediction
                         bestEpoch, bestValidationLoss));
                 }
 
-                // Evaluate once on the untouched test set using the selected weights.
+                // Tune the decision threshold on validation data, then evaluate once
+                // on the untouched test set using the selected weights and threshold.
+                TuneThresholdOnValidation();
                 EvaluateModel();
                 pnlChart.Invalidate();
             }
@@ -412,66 +421,88 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Computes Accuracy, Precision, Recall, F1 Score, and Confusion Matrix on the test set.
+        /// Chooses a decision threshold on the validation split by maximizing
+        /// Youden's J (sensitivity + specificity - 1), and records the validation AUC.
+        /// </summary>
+        private void TuneThresholdOnValidation()
+        {
+            if (network == null || dataHandler.ValidationFeatures == null || dataHandler.ValidationFeatures.Count == 0)
+                return;
+
+            int count = dataHandler.ValidationFeatures.Count;
+            double[] probabilities = new double[count];
+            int[] labels = new int[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                probabilities[i] = network.Predict(dataHandler.ValidationFeatures[i])[0];
+                labels[i] = (int)dataHandler.ValidationLabels[i][0];
+            }
+
+            lastValidationAuc = ModelMetrics.ComputeAuc(probabilities, labels);
+            decisionThreshold = ModelMetrics.FindBestThreshold(probabilities, labels, out lastYoudenJ);
+
+            AppendLog(string.Format(
+                "🎯  Validation AUC: {0:F3} | Tuned threshold: {1:F3} (Youden J = {2:F3})\r\n\r\n",
+                lastValidationAuc, decisionThreshold, lastYoudenJ));
+        }
+
+        /// <summary>
+        /// Computes Accuracy, Precision, Recall, F1, AUC, and the Confusion Matrix on
+        /// the test set using the validation-tuned decision threshold.
         /// </summary>
         private void EvaluateModel()
         {
             if (network == null || dataHandler.TestFeatures == null || dataHandler.TestFeatures.Count == 0)
                 return;
 
-            int tp = 0; // True Positive (Predicted Disease, Actual Disease)
-            int fp = 0; // False Positive (Predicted Disease, Actual Healthy)
-            int tn = 0; // True Negative (Predicted Healthy, Actual Healthy)
-            int fn = 0; // False Negative (Predicted Healthy, Actual Disease)
+            int testCount = dataHandler.TestFeatures.Count;
+            double[] probabilities = new double[testCount];
+            int[] labels = new int[testCount];
             double testLossSum = 0.0;
 
-            int testCount = dataHandler.TestFeatures.Count;
             for (int i = 0; i < testCount; i++)
             {
-                double[] output = network.Predict(dataHandler.TestFeatures[i]);
-                double predProb = output[0];
-                int actual = (int)dataHandler.TestLabels[i][0];
-                int predicted = predProb >= 0.5 ? 1 : 0;
+                probabilities[i] = network.Predict(dataHandler.TestFeatures[i])[0];
+                labels[i] = (int)dataHandler.TestLabels[i][0];
 
-                // Loss
-                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, predProb));
-                testLossSum += -(actual * Math.Log(p) + (1.0 - actual) * Math.Log(1.0 - p));
-
-                if (predicted == 1 && actual == 1) tp++;
-                else if (predicted == 1 && actual == 0) fp++;
-                else if (predicted == 0 && actual == 0) tn++;
-                else if (predicted == 0 && actual == 1) fn++;
+                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, probabilities[i]));
+                testLossSum += -(labels[i] * Math.Log(p) + (1 - labels[i]) * Math.Log(1.0 - p));
             }
 
-            double accuracy = (double)(tp + tn) / testCount * 100.0;
-            double precision = (tp + fp) > 0 ? (double)tp / (tp + fp) * 100.0 : 0.0;
-            double recall = (tp + fn) > 0 ? (double)tp / (tp + fn) * 100.0 : 0.0;
-            double f1 = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0.0;
             double avgTestLoss = testLossSum / testCount;
+            ClassificationReport report = ModelMetrics.Evaluate(probabilities, labels, decisionThreshold);
+            lastTestAuc = report.Auc;
 
             // Display in metric cards
-            lblAccValue.Text = $"{accuracy:F1}%";
-            lblPrecValue.Text = $"{precision:F1}%";
-            lblRecValue.Text = $"{recall:F1}%";
-            lblF1Value.Text = $"{f1:F1}%";
+            lblAccValue.Text = $"{report.Accuracy:F1}%";
+            lblPrecValue.Text = $"{report.Precision:F1}%";
+            lblRecValue.Text = $"{report.Recall:F1}%";
+            lblF1Value.Text = $"{report.F1:F1}%";
             lblLossValue.Text = $"{avgTestLoss:F4}";
+            lblAucValue.Text = $"{report.Auc:F3}";
 
             // Highlight color based on performance
-            lblAccValue.ForeColor = accuracy >= 80 ? Color.FromArgb(70, 220, 120) : Color.FromArgb(240, 180, 70);
+            lblAccValue.ForeColor = report.Accuracy >= 80
+                ? Color.FromArgb(70, 220, 120)
+                : Color.FromArgb(240, 180, 70);
 
             // Print full evaluation report to the training log
             AppendLog("📊  TEST SET EVALUATION REPORT\r\n");
             AppendLog("─────────────────────────────────────────────────────────\r\n");
-            AppendLog($"  Selected Epoch: {lastBestEpoch}\r\n");
-            AppendLog($"  Accuracy:   {accuracy:F2}%\r\n");
-            AppendLog($"  Precision:  {precision:F2}%\r\n");
-            AppendLog($"  Recall:     {recall:F2}%\r\n");
-            AppendLog($"  F1-Score:   {f1:F2}%\r\n");
-            AppendLog($"  Test Loss:  {avgTestLoss:F4}\r\n\r\n");
+            AppendLog($"  Selected Epoch:   {lastBestEpoch}\r\n");
+            AppendLog($"  Threshold:        {decisionThreshold:F3} (tuned on validation)\r\n");
+            AppendLog($"  Accuracy:         {report.Accuracy:F2}%\r\n");
+            AppendLog($"  Precision:        {report.Precision:F2}%\r\n");
+            AppendLog($"  Recall:           {report.Recall:F2}%\r\n");
+            AppendLog($"  Specificity:      {report.Specificity:F2}%\r\n");
+            AppendLog($"  F1-Score:         {report.F1:F2}%\r\n");
+            AppendLog($"  ROC-AUC:          {report.Auc:F3}\r\n");
+            AppendLog($"  Test Loss (BCE):  {avgTestLoss:F4}\r\n\r\n");
             AppendLog("  Confusion Matrix:\r\n");
             AppendLog(string.Format("                 Actual Disease (1)    Actual Healthy (0)\r\n"));
-            AppendLog(string.Format("  Pred Disease:        TP = {0,-8}         FP = {1,-8}\r\n", tp, fp));
-            AppendLog(string.Format("  Pred Healthy:        FN = {0,-8}         TN = {1,-8}\r\n", fn, tn));
+            AppendLog(string.Format("  Pred Disease:        TP = {0,-8}         FP = {1,-8}\r\n", report.TP, report.FP));
+            AppendLog(string.Format("  Pred Healthy:        FN = {0,-8}         TN = {1,-8}\r\n", report.FN, report.TN));
             AppendLog("─────────────────────────────────────────────────────────\r\n\r\n");
         }
 
@@ -483,6 +514,10 @@ namespace RealWorldPrediction
             if (isTraining) return;
 
             network = null;
+            decisionThreshold = 0.5;
+            lastValidationAuc = 0.0;
+            lastTestAuc = 0.0;
+            lastYoudenJ = 0.0;
             lock (historyLock)
             {
                 trainingHistory.Clear();
@@ -495,6 +530,7 @@ namespace RealWorldPrediction
             lblRecValue.Text = "—";
             lblF1Value.Text = "—";
             lblLossValue.Text = "—";
+            lblAucValue.Text = "—";
 
             lblResultText.Text = "Train the model first, then enter patient data above.";
             lblResultText.ForeColor = Color.FromArgb(150, 150, 170);
@@ -547,32 +583,32 @@ namespace RealWorldPrediction
             // Forward pass prediction
             double[] output = network.Predict(normalized);
             double probability = output[0];
-            double confidencePercent = probability >= 0.5 ? probability * 100.0 : (1.0 - probability) * 100.0;
 
             // Visual feedback
             int barMaxWidth = pnlResultBar.Width;
             int fillWidth = (int)(probability * barMaxWidth);
             pnlResultFill.Width = Math.Max(4, Math.Min(barMaxWidth, fillWidth));
 
-            if (probability >= 0.5)
+            if (probability >= decisionThreshold)
             {
                 lblResultText.Text = "⚠ HIGH RISK — Heart Disease Detected";
                 lblResultText.ForeColor = Color.FromArgb(245, 80, 80);
                 pnlResultFill.BackColor = Color.FromArgb(245, 80, 80);
-                lblConfidence.Text = $"Disease Probability: {probability * 100.0:F1}% (Confidence: {confidencePercent:F1}%)";
+                lblConfidence.Text = $"Disease Probability: {probability * 100.0:F1}% (Threshold: {decisionThreshold:F3})";
             }
             else
             {
                 lblResultText.Text = "✔ LOW RISK — No Heart Disease Detected";
                 lblResultText.ForeColor = Color.FromArgb(60, 200, 110);
                 pnlResultFill.BackColor = Color.FromArgb(60, 200, 110);
-                lblConfidence.Text = $"Healthy Probability: {(1.0 - probability) * 100.0:F1}% (Confidence: {confidencePercent:F1}%)";
+                lblConfidence.Text = $"Healthy Probability: {(1.0 - probability) * 100.0:F1}% (Threshold: {decisionThreshold:F3})";
             }
 
             // Also log the individual prediction to the training log
             AppendLog($"\r\n🩺 Prediction: Age={rawInputs[0]}, Sex={(rawInputs[1] == 1 ? "M" : "F")}, " +
                       $"CP={rawInputs[2]}, BP={rawInputs[3]}, Chol={rawInputs[4]} → " +
-                      $"Output={probability:F4} ({(probability >= 0.5 ? "HIGH RISK" : "LOW RISK")})\r\n");
+                      $"Output={probability:F4}, Threshold={decisionThreshold:F3} " +
+                      $"({(probability >= decisionThreshold ? "HIGH RISK" : "LOW RISK")})\r\n");
         }
 
         private double ParseDouble(Control c, string fieldName)
@@ -651,6 +687,12 @@ namespace RealWorldPrediction
                         "# ValidationSplit={0}", lastValidationRatio));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# SelectedEpoch={0}", lastBestEpoch));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# DecisionThreshold={0:F3}", decisionThreshold));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# ValidationAuc={0:F4}", lastValidationAuc));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# TestAuc={0:F4}", lastTestAuc));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# Seed={0}", lastSeed));
                     sb.AppendLine("# Loss=BinaryCrossEntropy");

@@ -1,5 +1,5 @@
 # Heart Disease MLP - Real Training Run
-# Generated: 2026-11-04T08:03:20.6820715+08:00
+# Generated: 2026-11-04T08:07:45.7834189+08:00
 # Architecture: 13 -> 8 -> 1 (sigmoid)
 # LearningRate=0.01
 # HiddenNodes=8
@@ -7,6 +7,9 @@
 # TrainSplit=0.7
 # ValidationSplit=0.15
 # SelectedEpoch=98
+# DecisionThreshold=0.689
+# ValidationAuc=0.8571
+# TestAuc=0.9644
 # Seed=42
 # Loss=BinaryCrossEntropy
 Epoch,Loss,TrainAccuracy,ValidationLoss,ValidationAccuracy

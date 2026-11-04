@@ -47,6 +47,8 @@ namespace RealWorldPrediction
             this.lblF1Value = new System.Windows.Forms.Label();
             this.lblLossTitle = new System.Windows.Forms.Label();
             this.lblLossValue = new System.Windows.Forms.Label();
+            this.lblAucTitle = new System.Windows.Forms.Label();
+            this.lblAucValue = new System.Windows.Forms.Label();
             this.grpDataInfo = new System.Windows.Forms.GroupBox();
             this.lblDataInfo = new System.Windows.Forms.Label();
             this.grpLog = new System.Windows.Forms.GroupBox();
@@ -385,6 +387,8 @@ namespace RealWorldPrediction
             this.grpMetrics.Controls.Add(this.lblF1Value);
             this.grpMetrics.Controls.Add(this.lblLossTitle);
             this.grpMetrics.Controls.Add(this.lblLossValue);
+            this.grpMetrics.Controls.Add(this.lblAucTitle);
+            this.grpMetrics.Controls.Add(this.lblAucValue);
             this.grpMetrics.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.grpMetrics.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(180)))), ((int)(((byte)(180)))), ((int)(((byte)(200)))));
             this.grpMetrics.Location = new System.Drawing.Point(15, 427);
@@ -400,7 +404,7 @@ namespace RealWorldPrediction
             this.lblAccTitle.AutoSize = true;
             this.lblAccTitle.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblAccTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
-            this.lblAccTitle.Location = new System.Drawing.Point(15, 28);
+            this.lblAccTitle.Location = new System.Drawing.Point(15, 26);
             this.lblAccTitle.Name = "lblAccTitle";
             this.lblAccTitle.Size = new System.Drawing.Size(59, 15);
             this.lblAccTitle.Text = "Accuracy:";
@@ -410,7 +414,7 @@ namespace RealWorldPrediction
             // 
             this.lblAccValue.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
             this.lblAccValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
-            this.lblAccValue.Location = new System.Drawing.Point(160, 28);
+            this.lblAccValue.Location = new System.Drawing.Point(160, 26);
             this.lblAccValue.Name = "lblAccValue";
             this.lblAccValue.Size = new System.Drawing.Size(100, 22);
             this.lblAccValue.Text = "—";
@@ -422,7 +426,7 @@ namespace RealWorldPrediction
             this.lblPrecTitle.AutoSize = true;
             this.lblPrecTitle.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblPrecTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
-            this.lblPrecTitle.Location = new System.Drawing.Point(15, 58);
+            this.lblPrecTitle.Location = new System.Drawing.Point(15, 54);
             this.lblPrecTitle.Name = "lblPrecTitle";
             this.lblPrecTitle.Size = new System.Drawing.Size(58, 15);
             this.lblPrecTitle.Text = "Precision:";
@@ -432,7 +436,7 @@ namespace RealWorldPrediction
             // 
             this.lblPrecValue.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
             this.lblPrecValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
-            this.lblPrecValue.Location = new System.Drawing.Point(160, 58);
+            this.lblPrecValue.Location = new System.Drawing.Point(160, 54);
             this.lblPrecValue.Name = "lblPrecValue";
             this.lblPrecValue.Size = new System.Drawing.Size(100, 22);
             this.lblPrecValue.Text = "—";
@@ -444,7 +448,7 @@ namespace RealWorldPrediction
             this.lblRecTitle.AutoSize = true;
             this.lblRecTitle.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblRecTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
-            this.lblRecTitle.Location = new System.Drawing.Point(15, 88);
+            this.lblRecTitle.Location = new System.Drawing.Point(15, 82);
             this.lblRecTitle.Name = "lblRecTitle";
             this.lblRecTitle.Size = new System.Drawing.Size(41, 15);
             this.lblRecTitle.Text = "Recall:";
@@ -454,7 +458,7 @@ namespace RealWorldPrediction
             // 
             this.lblRecValue.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
             this.lblRecValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
-            this.lblRecValue.Location = new System.Drawing.Point(160, 88);
+            this.lblRecValue.Location = new System.Drawing.Point(160, 82);
             this.lblRecValue.Name = "lblRecValue";
             this.lblRecValue.Size = new System.Drawing.Size(100, 22);
             this.lblRecValue.Text = "—";
@@ -466,7 +470,7 @@ namespace RealWorldPrediction
             this.lblF1Title.AutoSize = true;
             this.lblF1Title.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblF1Title.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
-            this.lblF1Title.Location = new System.Drawing.Point(15, 118);
+            this.lblF1Title.Location = new System.Drawing.Point(15, 110);
             this.lblF1Title.Name = "lblF1Title";
             this.lblF1Title.Size = new System.Drawing.Size(52, 15);
             this.lblF1Title.Text = "F1 Score:";
@@ -476,7 +480,7 @@ namespace RealWorldPrediction
             // 
             this.lblF1Value.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
             this.lblF1Value.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
-            this.lblF1Value.Location = new System.Drawing.Point(160, 118);
+            this.lblF1Value.Location = new System.Drawing.Point(160, 110);
             this.lblF1Value.Name = "lblF1Value";
             this.lblF1Value.Size = new System.Drawing.Size(100, 22);
             this.lblF1Value.Text = "—";
@@ -488,7 +492,7 @@ namespace RealWorldPrediction
             this.lblLossTitle.AutoSize = true;
             this.lblLossTitle.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblLossTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
-            this.lblLossTitle.Location = new System.Drawing.Point(15, 148);
+            this.lblLossTitle.Location = new System.Drawing.Point(15, 138);
             this.lblLossTitle.Name = "lblLossTitle";
             this.lblLossTitle.Size = new System.Drawing.Size(61, 15);
             this.lblLossTitle.Text = "Final Loss:";
@@ -498,11 +502,33 @@ namespace RealWorldPrediction
             // 
             this.lblLossValue.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
             this.lblLossValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
-            this.lblLossValue.Location = new System.Drawing.Point(160, 148);
+            this.lblLossValue.Location = new System.Drawing.Point(160, 138);
             this.lblLossValue.Name = "lblLossValue";
             this.lblLossValue.Size = new System.Drawing.Size(100, 22);
             this.lblLossValue.Text = "—";
             this.lblLossValue.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+
+            // 
+            // lblAucTitle
+            // 
+            this.lblAucTitle.AutoSize = true;
+            this.lblAucTitle.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblAucTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(190)))), ((int)(((byte)(190)))), ((int)(((byte)(210)))));
+            this.lblAucTitle.Location = new System.Drawing.Point(15, 166);
+            this.lblAucTitle.Name = "lblAucTitle";
+            this.lblAucTitle.Size = new System.Drawing.Size(32, 15);
+            this.lblAucTitle.Text = "AUC:";
+
+            // 
+            // lblAucValue
+            // 
+            this.lblAucValue.Font = new System.Drawing.Font("Consolas", 11F, System.Drawing.FontStyle.Bold);
+            this.lblAucValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(200)))), ((int)(((byte)(255)))));
+            this.lblAucValue.Location = new System.Drawing.Point(160, 166);
+            this.lblAucValue.Name = "lblAucValue";
+            this.lblAucValue.Size = new System.Drawing.Size(100, 22);
+            this.lblAucValue.Text = "—";
+            this.lblAucValue.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
             // 
             // grpDataInfo
@@ -1099,6 +1125,8 @@ namespace RealWorldPrediction
         private System.Windows.Forms.Label lblF1Value;
         private System.Windows.Forms.Label lblLossTitle;
         private System.Windows.Forms.Label lblLossValue;
+        private System.Windows.Forms.Label lblAucTitle;
+        private System.Windows.Forms.Label lblAucValue;
 
         // Dataset Info Group
         private System.Windows.Forms.GroupBox grpDataInfo;
