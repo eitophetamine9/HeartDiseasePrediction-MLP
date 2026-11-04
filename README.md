@@ -8,6 +8,16 @@
 
 A standalone Windows Forms (.NET Framework 4.8) machine learning application built with a custom 3-layer Multi-Layer Perceptron (MLP). The network composes the provided `INeuron`, `HNeuron`, and `ONeuron` classes from the `Backprop` library without modifying the library files. A thin `BackpropTrainer` layer adds a configurable learning rate, binary cross-entropy (BCE) loss, and seeded Xavier/Glorot initialization. The app includes a validation-based training workflow and a one-click 5-fold cross-validation mode for more stable performance estimates.
 
+## Results at a Glance
+
+| Evaluation | Accuracy | ROC-AUC | F1 |
+|---|---|---|---|
+| Single 70/15/15 split (config A, epoch 117) | 88.89% | 0.959 | 87.80% |
+| **5-fold cross-validation (config A)** | **82.14% ± 6.91%** | **0.910 ± 0.048** | 78.17% ± 10.41% |
+
+> [!IMPORTANT]
+> The cross-validated result is the more reliable summary. The single-split 88.89% is one optimistic draw from a 45-patient test set; fold accuracy ranged from 76.27% to 93.33%.
+
 ---
 
 ## Table of Contents

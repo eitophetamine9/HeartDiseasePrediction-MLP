@@ -124,7 +124,7 @@ namespace RealWorldPrediction
             this.lblSubHeader.Name = "lblSubHeader";
             this.lblSubHeader.Size = new System.Drawing.Size(700, 20);
             this.lblSubHeader.TabIndex = 1;
-            this.lblSubHeader.Text = "Binary Classification using 3-Layer MLP  |  Cleveland Dataset (303 samples, 13 features)";
+            this.lblSubHeader.Text = "Binary Classification using 3-Layer MLP  |  Cleveland Dataset (303 raw samples, 13 features → 22 encoded inputs)";
 
             // 
             // grpHyperparameters

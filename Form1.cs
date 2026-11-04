@@ -228,7 +228,7 @@ namespace RealWorldPrediction
             dataHandler.SplitTrainValidationTest(splitRatio, seed);
             lblDataInfo.Text = dataHandler.GetDataSummary();
 
-            // Instantiate network: 13 inputs -> hiddenCount -> 1 output
+            // Instantiate network: 22 encoded inputs -> hiddenCount -> 1 output
             network = new NeuralNetwork(dataHandler.FeatureCount, hiddenCount, dataHandler.OutputCount, lr, seed);
             lock (historyLock)
             {
