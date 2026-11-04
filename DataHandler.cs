@@ -263,15 +263,7 @@ namespace RealWorldPrediction
                 throw new ArgumentException("The dataset is too small for the requested split ratios.", nameof(trainRatio));
 
             // Fisher-Yates shuffle for unbiased randomization.
-            int[] indices = Enumerable.Range(0, total).ToArray();
-            Random rng = new Random(seed);
-            for (int i = total - 1; i > 0; i--)
-            {
-                int j = rng.Next(i + 1);
-                int temp = indices[i];
-                indices[i] = indices[j];
-                indices[j] = temp;
-            }
+            int[] indices = BuildShuffledIndices(total, seed);
 
             // Copy raw rows into train/validation/test. AllFeatures stays untouched so the
             // split can be repeated with a different ratio without double-normalizing.
@@ -306,6 +298,93 @@ namespace RealWorldPrediction
             NormalizeRows(TrainFeatures);
             NormalizeRows(ValidationFeatures);
             NormalizeRows(TestFeatures);
+        }
+
+        /// <summary>
+        /// Configures one fold of k-fold cross-validation. The shuffled rows are dealt
+        /// round-robin into <paramref name="foldCount"/> folds; the selected fold becomes
+        /// the test split and the remaining rows are divided into training and validation
+        /// (<paramref name="validationRatio"/> of the non-test rows). MinMax normalization
+        /// is fitted on this fold's training rows only.
+        ///
+        /// Call once per fold with <paramref name="foldIndex"/> from 0 to foldCount - 1.
+        /// </summary>
+        public void SplitKFold(int foldIndex, int foldCount, int seed = 42, double validationRatio = 0.15)
+        {
+            if (AllFeatures == null || AllFeatures.Count == 0) return;
+            if (foldCount < 2)
+                throw new ArgumentOutOfRangeException(nameof(foldCount), "At least two folds are required.");
+            if (foldIndex < 0 || foldIndex >= foldCount)
+                throw new ArgumentOutOfRangeException(nameof(foldIndex), "Fold index is outside the fold range.");
+            if (validationRatio <= 0.0 || validationRatio >= 0.5)
+                throw new ArgumentOutOfRangeException(nameof(validationRatio), "Validation ratio must be between 0 and 0.5.");
+
+            int total = AllFeatures.Count;
+            int[] indices = BuildShuffledIndices(total, seed);
+
+            // Deal the shuffled rows round-robin so the folds are balanced.
+            List<int> testRows = new List<int>();
+            List<int> remainingRows = new List<int>();
+            for (int i = 0; i < total; i++)
+            {
+                if (i % foldCount == foldIndex) testRows.Add(indices[i]);
+                else remainingRows.Add(indices[i]);
+            }
+
+            int validationSize = Math.Max(1, (int)(remainingRows.Count * validationRatio));
+            int trainSize = remainingRows.Count - validationSize;
+            if (trainSize < 2 || testRows.Count < 1)
+                throw new ArgumentException("The dataset is too small for the requested fold count and validation ratio.");
+
+            TrainFeatures = new List<double[]>();
+            TrainLabels = new List<double[]>();
+            ValidationFeatures = new List<double[]>();
+            ValidationLabels = new List<double[]>();
+            TestFeatures = new List<double[]>();
+            TestLabels = new List<double[]>();
+
+            for (int i = 0; i < remainingRows.Count; i++)
+            {
+                int idx = remainingRows[i];
+                if (i < trainSize)
+                {
+                    TrainFeatures.Add(EncodeRaw(AllFeatures[idx]));
+                    TrainLabels.Add((double[])AllLabels[idx].Clone());
+                }
+                else
+                {
+                    ValidationFeatures.Add(EncodeRaw(AllFeatures[idx]));
+                    ValidationLabels.Add((double[])AllLabels[idx].Clone());
+                }
+            }
+
+            foreach (int idx in testRows)
+            {
+                TestFeatures.Add(EncodeRaw(AllFeatures[idx]));
+                TestLabels.Add((double[])AllLabels[idx].Clone());
+            }
+
+            FitNormalizationOnTrain();
+            NormalizeRows(TrainFeatures);
+            NormalizeRows(ValidationFeatures);
+            NormalizeRows(TestFeatures);
+        }
+
+        /// <summary>
+        /// Returns a Fisher-Yates shuffle of the indices 0..total-1 using the given seed.
+        /// </summary>
+        private static int[] BuildShuffledIndices(int total, int seed)
+        {
+            int[] indices = Enumerable.Range(0, total).ToArray();
+            Random rng = new Random(seed);
+            for (int i = total - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                int temp = indices[i];
+                indices[i] = indices[j];
+                indices[j] = temp;
+            }
+            return indices;
         }
 
         /// <summary>

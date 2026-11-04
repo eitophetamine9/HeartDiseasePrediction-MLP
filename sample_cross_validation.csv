@@ -1,0 +1,23 @@
+# Heart Disease MLP - 5-Fold Cross-Validation
+# Generated: 2026-11-04T08:22:13.0119912+08:00
+# Architecture: 22 -> 8 -> 1 (sigmoid)
+# LearningRate=0.01
+# HiddenNodes=8
+# Epochs=500
+# Folds=5
+# Seed=42
+# ValidationRatio=0.15
+# Threshold=YoudenJ on each fold's validation split
+
+# Per-fold metrics
+Fold,TrainSamples,ValidationSamples,TestSamples,SelectedEpoch,Threshold,ValidationAuc,TestAuc,TestAccuracy,TestLoss,TP,FP,TN,FN,Precision,Recall,Specificity,F1
+1,202,35,60,215,0.500,0.9542,0.9459,93.33,0.297146,22,3,34,1,88.00,95.65,91.89,91.67
+2,202,35,60,170,0.700,0.9542,0.8982,76.67,0.396108,12,0,34,14,100.00,46.15,100.00,63.16
+3,203,35,59,116,0.602,0.9477,0.9312,81.36,0.342363,18,3,30,8,85.71,69.23,90.91,76.60
+4,203,35,59,98,0.550,0.9605,0.8318,76.27,0.576446,23,6,22,8,79.31,74.19,78.57,76.67
+5,203,35,59,180,0.631,0.9966,0.9447,83.05,0.319947,24,3,25,7,88.89,77.42,89.29,82.76
+
+# Aggregate (mean and sample standard deviation across folds)
+Statistic,Accuracy,Auc,F1,Precision,Recall,Specificity,Threshold,SelectedEpoch
+Mean,82.14,0.9104,78.17,88.38,72.53,90.13,0.597,155.8
+Std,6.91,0.0480,10.41,7.50,17.80,7.67,0.077,

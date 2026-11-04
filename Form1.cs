@@ -416,7 +416,130 @@ namespace RealWorldPrediction
             {
                 btnStop.Enabled = false;
                 cts.Cancel();
-                AppendLog("⏹ Requesting training stop... please wait.\r\n");
+                AppendLog("⏹ Requesting stop... please wait.\r\n");
+            }
+        }
+
+        /// <summary>
+        /// Runs 5-fold cross-validation on the loaded dataset with the current
+        /// hyperparameters and logs mean ± standard deviation for the key metrics.
+        /// The interactive single-split model is left untouched.
+        /// </summary>
+        private async void btnCrossValidate_Click(object sender, EventArgs e)
+        {
+            if (isTraining)
+            {
+                MessageBox.Show("A run is already in progress. Please wait or click Stop.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (dataHandler.AllFeatures == null || dataHandler.AllFeatures.Count == 0)
+            {
+                MessageBox.Show("No dataset loaded to cross-validate.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            const int folds = 5;
+            double lr = (double)nudLearningRate.Value;
+            int hiddenCount = (int)nudHiddenNodes.Value;
+            int epochs = (int)nudEpochs.Value;
+            double splitRatio = (double)nudTrainSplit.Value / 100.0;
+            int seed = 42;
+
+            cts = new System.Threading.CancellationTokenSource();
+            isTraining = true;
+            btnTrain.Enabled = false;
+            btnCrossValidate.Enabled = false;
+            btnStop.Enabled = true;
+            btnReset.Enabled = false;
+            btnExportLog.Enabled = false;
+            progressBar.Value = 0;
+            progressBar.Maximum = folds;
+
+            AppendLog("═════════════════════════════════════════════════════════\r\n");
+            AppendLog($"  STARTING {folds}-FOLD CROSS-VALIDATION\r\n");
+            AppendLog($"  Architecture:   {dataHandler.FeatureCount} Inputs → {hiddenCount} Hidden → 1 Output (Sigmoid)\r\n");
+            AppendLog($"  Learning Rate:  {lr:F4}\r\n");
+            AppendLog($"  Max Epochs:     {epochs:N0} per fold\r\n");
+            AppendLog($"  Model Select:   Best validation loss per fold\r\n");
+            AppendLog($"  Threshold:      Youden's J on each fold's validation split\r\n");
+            AppendLog("═════════════════════════════════════════════════════════\r\n");
+
+            DateTime startTime = DateTime.Now;
+
+            try
+            {
+                CrossValidationResult result = await Task.Run(() => CrossValidator.Run(
+                    dataHandler,
+                    folds,
+                    hiddenCount,
+                    lr,
+                    epochs,
+                    seed,
+                    cts.Token,
+                    (completed, total) =>
+                    {
+                        if (!this.IsDisposed)
+                        {
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                if (!this.IsDisposed)
+                                {
+                                    progressBar.Value = Math.Min(progressBar.Maximum, completed);
+                                }
+                            }));
+                        }
+                    },
+                    line =>
+                    {
+                        if (!this.IsDisposed)
+                        {
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                if (!this.IsDisposed) AppendLog(line + "\r\n");
+                            }));
+                        }
+                    }));
+
+                TimeSpan elapsed = DateTime.Now - startTime;
+                AppendLog("═════════════════════════════════════════════════════════\r\n");
+                AppendLog($"✔ {folds}-fold cross-validation completed in {elapsed.TotalSeconds:F2} seconds.\r\n");
+                AppendLog($"  Accuracy:    {result.MeanAccuracy:F2}% ± {result.StdAccuracy:F2}%\r\n");
+                AppendLog($"  ROC-AUC:     {result.MeanAuc:F3} ± {result.StdAuc:F3}\r\n");
+                AppendLog($"  F1-Score:    {result.MeanF1:F2}% ± {result.StdF1:F2}%\r\n");
+                AppendLog($"  Precision:   {result.MeanPrecision:F2}% ± {result.StdPrecision:F2}%\r\n");
+                AppendLog($"  Recall:      {result.MeanRecall:F2}% ± {result.StdRecall:F2}%\r\n");
+                AppendLog($"  Specificity: {result.MeanSpecificity:F2}% ± {result.StdSpecificity:F2}%\r\n");
+                AppendLog($"  Threshold:   {result.MeanThreshold:F3} ± {result.StdThreshold:F3}\r\n");
+                AppendLog($"  Mean epoch:  {result.MeanSelectedEpoch:F1}\r\n");
+                AppendLog("  (mean ± sample standard deviation across folds)\r\n\r\n");
+            }
+            catch (OperationCanceledException)
+            {
+                AppendLog("⏹ Cross-validation stopped by user.\r\n\r\n");
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"✖ Cross-validation failed: {ex.Message}\r\n\r\n");
+                MessageBox.Show(ex.Message, "Cross-Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Restore the split used by the interactive model so live predictions
+                // keep using the same normalization parameters. If no model has been
+                // trained yet, fall back to the current UI value.
+                double restoreRatio = lastSplitRatio > 0.0 ? lastSplitRatio : splitRatio;
+                dataHandler.SplitTrainValidationTest(restoreRatio, lastSeed);
+                lblDataInfo.Text = dataHandler.GetDataSummary();
+
+                isTraining = false;
+                btnTrain.Enabled = true;
+                btnCrossValidate.Enabled = true;
+                btnStop.Enabled = false;
+                btnReset.Enabled = true;
+                btnExportLog.Enabled = true;
+                cts?.Dispose();
+                cts = null;
             }
         }
 

@@ -6,7 +6,7 @@
 [![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visualstudio&logoColor=white)](https://visualstudio.microsoft.com/)
 [![UCI Machine Learning Repository](https://img.shields.io/badge/UCI_Repository-Heart_Disease-4B6584?style=for-the-badge&logo=databricks&logoColor=white)](https://archive.ics.uci.edu/dataset/45/heart+disease)
 
-A standalone Windows Forms (.NET Framework 4.8) machine learning application built with a custom 3-layer Multi-Layer Perceptron (MLP). The network composes the provided `INeuron`, `HNeuron`, and `ONeuron` classes from the `Backprop` library without modifying the library files. A thin `BackpropTrainer` layer adds a configurable learning rate, binary cross-entropy (BCE) loss, and seeded Xavier/Glorot initialization.
+A standalone Windows Forms (.NET Framework 4.8) machine learning application built with a custom 3-layer Multi-Layer Perceptron (MLP). The network composes the provided `INeuron`, `HNeuron`, and `ONeuron` classes from the `Backprop` library without modifying the library files. A thin `BackpropTrainer` layer adds a configurable learning rate, binary cross-entropy (BCE) loss, and seeded Xavier/Glorot initialization. The app includes a validation-based training workflow and a one-click 5-fold cross-validation mode for more stable performance estimates.
 
 ---
 
@@ -203,12 +203,19 @@ Once training completes, the best validation-selected weights are restored, a de
 - **AUC:** Area under the ROC curve (threshold-independent ranking quality).
 - **Confusion Matrix:** Printed in the log ($TP, FP, TN, FN$).
 
-### Step 5: Test Real Patient Data (Inference)
+### Step 5: Run 5-Fold Cross-Validation (Recommended)
+- Click **5-Fold Cross-Validate** in the training controls panel.
+- The app trains five separate models, each holding out a different fold of the data as its test set. Within each fold, a validation slice drives early stopping and threshold tuning, so every reported number comes from rows the model never saw.
+- The log prints per-fold accuracy/AUC/F1 plus the mean ± sample standard deviation across folds. This is a more stable estimate than a single 45-patient test split.
+- The currently trained interactive model and its metric cards are left untouched; the standard 70/15/15 split is restored when the run finishes.
+- Cross-validation uses the same learning rate, hidden-node count, and epoch limit as the Train button, so expect roughly five times the training time.
+
+### Step 6: Test Real Patient Data (Inference)
 On the right panel under **Patient Data Input**:
 - **Option A (Instant Test):** Click **High-Risk Sample** or **Low-Risk Sample** to auto-populate the inputs with verified clinical records from the Cleveland dataset.
 - **Option B (Custom Test):** Manually type patient measurements (Age, Resting BP, Cholesterol, etc.) and select options from the dropdowns.
 
-### Step 6: Get Prediction Result
+### Step 7: Get Prediction Result
 - Click **Predict**.
 - The result panel immediately shows:
   - Diagnostic verdict:
@@ -218,7 +225,7 @@ On the right panel under **Patient Data Input**:
   - Color-coded risk meter bar.
   - Detailed log entry in the center console.
 
-### Step 7: Export Training Log to CSV
+### Step 8: Export Training Log to CSV
 - Click **Export CSV** in the training controls panel.
 - Choose a file destination.
 - A CSV file containing the run configuration (including the selected epoch, decision threshold, validation AUC, and test AUC) plus `Epoch,Loss,TrainAccuracy,ValidationLoss,ValidationAccuracy` across all training intervals is saved for documentation, reports, or spreadsheet plotting.
@@ -262,11 +269,14 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
   - **`target = 1.0`** if diagnosis $\ge 1$ (Heart Disease Detected)
   - **`target = 0.0`** if diagnosis $= 0$ (Healthy / No Heart Disease)
 
-#### 2. Train / Validation / Test Splitting (`DataHandler.SplitTrainValidationTest`)
-- Performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for reproducibility.
-- Partitions the raw rows into 70% training (207 samples), 15% validation (45 samples), and 15% test (45 samples), or according to the user-selected training percentage. The held-out portion is split evenly between validation and test.
+#### 2. Train / Validation / Test and K-Fold Splitting
+- `DataHandler.SplitTrainValidationTest` performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for reproducibility.
+- It partitions the raw rows into 70% training (207 samples), 15% validation (45 samples), and 15% test (45 samples), or according to the user-selected training percentage. The held-out portion is split evenly between validation and test.
 - The validation split is used only to select the best epoch (lowest validation BCE). The test split is touched once, after model selection.
 - The raw rows are copied into the splits, so `AllFeatures` is never normalized in place and the split can be repeated without double-scaling.
+- `DataHandler.SplitKFold` deals the shuffled rows round-robin into `k` balanced folds. Fold `i` becomes the test split; the remaining rows are divided into training and validation (15% of the non-test rows).
+- MinMax normalization is re-fitted on each fold's training rows only, so no fold leaks information into its own test partition.
+- `CrossValidator` uses `SplitKFold` to produce the 5-fold summary in `sample_cross_validation.csv`.
 
 #### 3. One-Hot Encoding (`DataHandler.EncodeRaw`)
 - Four categorical attributes are expanded into mutually exclusive indicator columns:
@@ -341,6 +351,32 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 >
 > A diagnostic comparison using an F1-optimal validation threshold instead of Youden's J produced the same 88.89% test accuracy but a different trade-off: TP=22, FP=4, TN=18, FN=1 (precision 84.62%, recall 95.65%, specificity 81.82%, F1 89.80%). For a screening tool, the higher-recall operating point may be clinically preferable; the app keeps Youden's J as the documented, balanced default.
 
+### 5-Fold Cross-Validation Results
+
+The single 70/15/15 split gives one estimate on 45 test patients. To check how much that estimate depends on the split, the same config A (LR `0.01`, 8 hidden, 500 epochs) was evaluated with 5-fold cross-validation. Each fold holds out a different ~59-patient test set, and the reported numbers are mean ± sample standard deviation across folds (see `sample_cross_validation.csv`).
+
+| Fold | Selected Epoch | Threshold | Test Accuracy | Test AUC | F1 |
+|---|---|---|---|---|---|
+| 1 | 215 | 0.500 | 93.33% | 0.946 | 91.67% |
+| 2 | 170 | 0.700 | 76.67% | 0.898 | 63.16% |
+| 3 | 116 | 0.602 | 81.36% | 0.931 | 76.60% |
+| 4 | 98 | 0.550 | 76.27% | 0.832 | 76.67% |
+| 5 | 180 | 0.631 | 83.05% | 0.945 | 82.76% |
+
+| Aggregate Metric | Mean ± Std |
+|---|---|
+| Accuracy | 82.14% ± 6.91% |
+| ROC-AUC | 0.910 ± 0.048 |
+| F1 Score | 78.17% ± 10.41% |
+| Precision | 88.38% ± 7.50% |
+| Recall / Sensitivity | 72.53% ± 17.80% |
+| Specificity | 90.13% ± 7.67% |
+| Decision Threshold | 0.597 ± 0.077 |
+| Mean Selected Epoch | 155.8 |
+
+> [!IMPORTANT]
+> The cross-validated accuracy (82.14% ± 6.91%) is lower and more variable than the single-split 88.89%. Fold 2 in particular reached only 46.15% recall, which shows how sensitive the validation-tuned threshold is on small folds. The 88.89% single-split figure should therefore be read as an optimistic draw, not a reliable expected performance. The cross-validation mean is the better summary.
+
 ---
 
 ## Evaluation Metrics & Performance Analysis
@@ -389,7 +425,8 @@ Pred Healthy:        FN                     TN
 
 - The dataset is small (297 patients) and dates from the 1980s; it is not representative of current clinical populations.
 - The test split contains only 45 patients, so a single accuracy estimate has a wide confidence interval (see the Wilson interval above).
-- Hyperparameters are compared by validation loss, and the test split is touched once. With only 45 validation and 45 test samples, both estimates are still noisy; 5-fold cross-validation would give a more stable picture.
+- Hyperparameters are compared by validation loss, and the test split is touched once. With only 45 validation and 45 test samples, both estimates are still noisy; the bundled 5-fold cross-validation gives a more stable summary (82.14% ± 6.91% accuracy for the selected config).
+- The cross-validation folds still contain only ~59 test patients each, and the decision threshold varies noticeably between folds (0.50–0.70), so even the cross-validated numbers carry substantial uncertainty.
 - The model has not been externally validated, calibrated, or reviewed by clinicians.
 - **This is an educational research prototype, not a medical device. Do not use it for clinical decisions.**
 
@@ -406,18 +443,20 @@ RealWorldPrediction/
 │   └── OuputN 1.cs               Unmodified output neuron library class
 ├── Data/
 │   └── heart.csv                 Cleveland Heart Disease dataset (CSV)
-├── DataHandler.cs                CSV parsing, one-hot encoding, leak-free MinMax scaling, 3-way split
+├── DataHandler.cs                CSV parsing, one-hot encoding, leak-free MinMax scaling, 3-way split and k-fold splits
 ├── BackpropTrainer.cs            Configurable LR + BCE trainer built from INeuron/HNeuron/ONeuron
+├── CrossValidator.cs             K-fold runner with per-fold early stopping, threshold tuning, and mean ± std
 ├── ModelMetrics.cs               Accuracy/precision/recall/F1, ROC-AUC, threshold tuning
 ├── NeuralNetwork.cs              MLP wrapper (forward pass, prediction, weight snapshots, save/load)
 ├── TrainingEpochLog.cs           Data model for training history and CSV export
-├── Form1.cs                      Event handlers, async training, live chart, inference logic
+├── Form1.cs                      Event handlers, async training, live chart, cross-validation, inference logic
 ├── Form1.Designer.cs             Visual Studio WinForms Designer layout and controls
 ├── Program.cs                    Application entry point
 ├── RealWorldPrediction.csproj    MSBuild project file
 ├── sample_training_log.csv       Real training log for selected config A (LR 0.01, 8 hidden, 500 epochs)
 ├── sample_overfitting_log.csv    Real training log for config C (shows train/validation divergence)
 ├── sample_hyperparameter_results.csv  Real A-E experiment summary (validation-selected epochs)
+├── sample_cross_validation.csv   Real 5-fold cross-validation results for config A (per-fold + aggregate)
 └── README.md                     Technical documentation and user manual
 ```
 

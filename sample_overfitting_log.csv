@@ -1,5 +1,5 @@
 # Heart Disease MLP - Real Training Run
-# Generated: 2026-11-04T08:12:01.9644251+08:00
+# Generated: 2026-11-04T08:21:33.1505171+08:00
 # Architecture: 22 -> 20 -> 1 (sigmoid)
 # LearningRate=0.1
 # HiddenNodes=20

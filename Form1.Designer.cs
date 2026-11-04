@@ -35,6 +35,7 @@ namespace RealWorldPrediction
             this.btnStop = new System.Windows.Forms.Button();
             this.btnReset = new System.Windows.Forms.Button();
             this.btnExportLog = new System.Windows.Forms.Button();
+            this.btnCrossValidate = new System.Windows.Forms.Button();
             this.progressBar = new System.Windows.Forms.ProgressBar();
             this.grpMetrics = new System.Windows.Forms.GroupBox();
             this.lblAccTitle = new System.Windows.Forms.Label();
@@ -285,6 +286,7 @@ namespace RealWorldPrediction
             this.grpTraining.Controls.Add(this.btnStop);
             this.grpTraining.Controls.Add(this.btnReset);
             this.grpTraining.Controls.Add(this.btnExportLog);
+            this.grpTraining.Controls.Add(this.btnCrossValidate);
             this.grpTraining.Controls.Add(this.progressBar);
             this.grpTraining.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.grpTraining.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(180)))), ((int)(((byte)(180)))), ((int)(((byte)(200)))));
@@ -304,9 +306,9 @@ namespace RealWorldPrediction
             this.btnTrain.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnTrain.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnTrain.ForeColor = System.Drawing.Color.White;
-            this.btnTrain.Location = new System.Drawing.Point(15, 25);
+            this.btnTrain.Location = new System.Drawing.Point(15, 22);
             this.btnTrain.Name = "btnTrain";
-            this.btnTrain.Size = new System.Drawing.Size(115, 34);
+            this.btnTrain.Size = new System.Drawing.Size(115, 30);
             this.btnTrain.TabIndex = 0;
             this.btnTrain.Text = "🚀 Train";
             this.btnTrain.UseVisualStyleBackColor = false;
@@ -322,9 +324,9 @@ namespace RealWorldPrediction
             this.btnStop.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnStop.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnStop.ForeColor = System.Drawing.Color.White;
-            this.btnStop.Location = new System.Drawing.Point(140, 25);
+            this.btnStop.Location = new System.Drawing.Point(140, 22);
             this.btnStop.Name = "btnStop";
-            this.btnStop.Size = new System.Drawing.Size(115, 34);
+            this.btnStop.Size = new System.Drawing.Size(115, 30);
             this.btnStop.TabIndex = 1;
             this.btnStop.Text = "⏹ Stop";
             this.btnStop.UseVisualStyleBackColor = false;
@@ -339,9 +341,9 @@ namespace RealWorldPrediction
             this.btnReset.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnReset.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.btnReset.ForeColor = System.Drawing.Color.White;
-            this.btnReset.Location = new System.Drawing.Point(15, 65);
+            this.btnReset.Location = new System.Drawing.Point(15, 56);
             this.btnReset.Name = "btnReset";
-            this.btnReset.Size = new System.Drawing.Size(115, 30);
+            this.btnReset.Size = new System.Drawing.Size(115, 26);
             this.btnReset.TabIndex = 2;
             this.btnReset.Text = "🔄 Reset";
             this.btnReset.UseVisualStyleBackColor = false;
@@ -356,20 +358,37 @@ namespace RealWorldPrediction
             this.btnExportLog.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnExportLog.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.btnExportLog.ForeColor = System.Drawing.Color.White;
-            this.btnExportLog.Location = new System.Drawing.Point(140, 65);
+            this.btnExportLog.Location = new System.Drawing.Point(140, 56);
             this.btnExportLog.Name = "btnExportLog";
-            this.btnExportLog.Size = new System.Drawing.Size(115, 30);
+            this.btnExportLog.Size = new System.Drawing.Size(115, 26);
             this.btnExportLog.TabIndex = 3;
             this.btnExportLog.Text = "📄 Export CSV";
             this.btnExportLog.UseVisualStyleBackColor = false;
             this.btnExportLog.Click += new System.EventHandler(this.btnExportLog_Click);
 
             // 
+            // btnCrossValidate
+            // 
+            this.btnCrossValidate.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(140)))), ((int)(((byte)(120)))));
+            this.btnCrossValidate.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnCrossValidate.FlatAppearance.BorderSize = 0;
+            this.btnCrossValidate.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnCrossValidate.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            this.btnCrossValidate.ForeColor = System.Drawing.Color.White;
+            this.btnCrossValidate.Location = new System.Drawing.Point(15, 108);
+            this.btnCrossValidate.Name = "btnCrossValidate";
+            this.btnCrossValidate.Size = new System.Drawing.Size(240, 28);
+            this.btnCrossValidate.TabIndex = 5;
+            this.btnCrossValidate.Text = "🔁 5-Fold Cross-Validate";
+            this.btnCrossValidate.UseVisualStyleBackColor = false;
+            this.btnCrossValidate.Click += new System.EventHandler(this.btnCrossValidate_Click);
+
+            // 
             // progressBar
             // 
-            this.progressBar.Location = new System.Drawing.Point(15, 105);
+            this.progressBar.Location = new System.Drawing.Point(15, 86);
             this.progressBar.Name = "progressBar";
-            this.progressBar.Size = new System.Drawing.Size(240, 22);
+            this.progressBar.Size = new System.Drawing.Size(240, 18);
             this.progressBar.Style = System.Windows.Forms.ProgressBarStyle.Continuous;
             this.progressBar.TabIndex = 4;
 
@@ -1111,6 +1130,7 @@ namespace RealWorldPrediction
         private System.Windows.Forms.Button btnStop;
         private System.Windows.Forms.Button btnReset;
         private System.Windows.Forms.Button btnExportLog;
+        private System.Windows.Forms.Button btnCrossValidate;
         private System.Windows.Forms.ProgressBar progressBar;
 
         // Evaluation Metrics Group

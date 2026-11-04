@@ -57,6 +57,7 @@
     <Compile Include="DataHandler.cs" />
     <Compile Include="NeuralNetwork.cs" />
     <Compile Include="BackpropTrainer.cs" />
+    <Compile Include="CrossValidator.cs" />
     <Compile Include="ModelMetrics.cs" />
     <Compile Include="TrainingEpochLog.cs" />
     <Compile Include="backneural libraries\BackNeural 1.cs" />
