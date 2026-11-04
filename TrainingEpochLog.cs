@@ -14,10 +14,10 @@ namespace RealWorldPrediction
         /// <summary>Classification accuracy on the training split, in percent.</summary>
         public double Accuracy { get; set; }
 
-        /// <summary>Mean binary cross-entropy loss on the held-out test split.</summary>
-        public double TestLoss { get; set; }
+        /// <summary>Mean binary cross-entropy loss on the validation split.</summary>
+        public double ValidationLoss { get; set; }
 
-        /// <summary>Classification accuracy on the held-out test split, in percent.</summary>
-        public double TestAccuracy { get; set; }
+        /// <summary>Classification accuracy on the validation split, in percent.</summary>
+        public double ValidationAccuracy { get; set; }
     }
 }

@@ -96,6 +96,23 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
+        /// Returns a flat snapshot of all weights and biases for validation-based
+        /// model selection.
+        /// </summary>
+        public double[] ExportWeights()
+        {
+            return trainer.ExportWeights();
+        }
+
+        /// <summary>
+        /// Restores a snapshot produced by <see cref="ExportWeights"/>.
+        /// </summary>
+        public void ImportWeights(double[] snapshot)
+        {
+            trainer.ImportWeights(snapshot);
+        }
+
+        /// <summary>
         /// Saves all network weights and biases to a text file.
         /// </summary>
         public void SaveWeights(string path)

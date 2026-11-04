@@ -247,7 +247,7 @@ namespace RealWorldPrediction
             this.nudTrainSplit.Minimum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudTrainSplit.Name = "nudTrainSplit";
             this.nudTrainSplit.Size = new System.Drawing.Size(100, 23);
-            this.nudTrainSplit.Value = new decimal(new int[] { 85, 0, 0, 0 });
+            this.nudTrainSplit.Value = new decimal(new int[] { 70, 0, 0, 0 });
 
             // 
             // lblLogInterval

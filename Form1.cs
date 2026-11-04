@@ -27,6 +27,8 @@ namespace RealWorldPrediction
         private int lastHiddenNodes;
         private int lastEpochs;
         private double lastSplitRatio;
+        private double lastValidationRatio;
+        private int lastBestEpoch;
         private int lastSeed = 42;
 
         public Form1()
@@ -99,12 +101,12 @@ namespace RealWorldPrediction
             if (foundPath != null)
             {
                 dataHandler.LoadFromCsv(foundPath);
-                dataHandler.SplitTrainTest((double)nudTrainSplit.Value / 100.0, 42);
+                dataHandler.SplitTrainValidationTest((double)nudTrainSplit.Value / 100.0, 42);
 
                 lblDataInfo.Text = dataHandler.GetDataSummary();
                 AppendLog("✔ Dataset loaded successfully from:\r\n  " + Path.GetFileName(foundPath) + "\r\n");
                 AppendLog($"  Total: {dataHandler.AllFeatures.Count} records, {dataHandler.FeatureCount} features\r\n");
-                AppendLog($"  Train set: {dataHandler.TrainFeatures.Count} samples | Test set: {dataHandler.TestFeatures.Count} samples\r\n\r\n");
+                AppendLog($"  Train: {dataHandler.TrainFeatures.Count} | Validation: {dataHandler.ValidationFeatures.Count} | Test: {dataHandler.TestFeatures.Count}\r\n\r\n");
             }
             else
             {
@@ -211,10 +213,12 @@ namespace RealWorldPrediction
             lastHiddenNodes = hiddenCount;
             lastEpochs = epochs;
             lastSplitRatio = splitRatio;
+            lastValidationRatio = (1.0 - splitRatio) / 2.0;
+            lastBestEpoch = 0;
             lastSeed = seed;
 
             // Re-split and re-fit normalization on the training portion only.
-            dataHandler.SplitTrainTest(splitRatio, seed);
+            dataHandler.SplitTrainValidationTest(splitRatio, seed);
             lblDataInfo.Text = dataHandler.GetDataSummary();
 
             // Instantiate network: 13 inputs -> hiddenCount -> 1 output
@@ -240,13 +244,16 @@ namespace RealWorldPrediction
             AppendLog($"  Architecture:   {dataHandler.FeatureCount} Inputs → {hiddenCount} Hidden → 1 Output (Sigmoid)\r\n");
             AppendLog($"  Learning Rate:  {lr:F4}\r\n");
             AppendLog($"  Total Epochs:   {epochs:N0}\r\n");
-            AppendLog($"  Train / Test:   {dataHandler.TrainFeatures.Count} / {dataHandler.TestFeatures.Count} samples\r\n");
+            AppendLog($"  Train/Val/Test: {dataHandler.TrainFeatures.Count} / {dataHandler.ValidationFeatures.Count} / {dataHandler.TestFeatures.Count} samples\r\n");
             AppendLog($"  Loss:           Binary Cross-Entropy (BCE)\r\n");
+            AppendLog($"  Model Select:   Best validation loss\r\n");
             AppendLog($"  Init Seed:      {seed}\r\n");
             AppendLog("═════════════════════════════════════════════════════════\r\n");
 
             DateTime startTime = DateTime.Now;
             bool wasCancelled = false;
+            int bestEpoch = 0;
+            double bestValidationLoss = double.MaxValue;
 
             try
             {
@@ -256,10 +263,11 @@ namespace RealWorldPrediction
                     var token = cts.Token;
                     var trainFeatures = dataHandler.TrainFeatures;
                     var trainLabels = dataHandler.TrainLabels;
-                    var testFeatures = dataHandler.TestFeatures;
-                    var testLabels = dataHandler.TestLabels;
+                    var validationFeatures = dataHandler.ValidationFeatures;
+                    var validationLabels = dataHandler.ValidationLabels;
                     int sampleCount = trainFeatures.Count;
-                    int testCount = testFeatures.Count;
+                    int validationCount = validationFeatures.Count;
+                    double[] bestWeights = null;
 
                     for (int epoch = 1; epoch <= epochs; epoch++)
                     {
@@ -280,6 +288,33 @@ namespace RealWorldPrediction
 
                         double avgLoss = epochLossSum / sampleCount;
 
+                        // Validation metrics drive model selection. The test split is
+                        // never used here; it is touched only once after training.
+                        double validationLossSum = 0.0;
+                        int validationCorrect = 0;
+                        for (int s = 0; s < validationCount; s++)
+                        {
+                            double pred = network.Predict(validationFeatures[s])[0];
+                            int predictedClass = pred >= 0.5 ? 1 : 0;
+                            int actualClass = (int)validationLabels[s][0];
+                            if (predictedClass == actualClass) validationCorrect++;
+
+                            double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, pred));
+                            validationLossSum += -(actualClass * Math.Log(p) + (1 - actualClass) * Math.Log(1.0 - p));
+                        }
+                        double validationLoss = validationCount > 0 ? validationLossSum / validationCount : 0.0;
+                        double validationAcc = validationCount > 0
+                            ? (double)validationCorrect / validationCount * 100.0
+                            : 0.0;
+
+                        // Keep the weights with the lowest validation loss.
+                        if (validationLoss < bestValidationLoss)
+                        {
+                            bestValidationLoss = validationLoss;
+                            bestEpoch = epoch;
+                            bestWeights = network.ExportWeights();
+                        }
+
                         // Log progress at throttled intervals using non-blocking BeginInvoke
                         if (epoch % logInterval == 0 || epoch == epochs || epoch == 1)
                         {
@@ -293,30 +328,13 @@ namespace RealWorldPrediction
                             }
                             double trainAcc = (double)correct / sampleCount * 100.0;
 
-                            // Test metrics are logged for monitoring only; the model is not
-                            // selected or tuned using this split.
-                            double testLossSum = 0.0;
-                            int testCorrect = 0;
-                            for (int s = 0; s < testCount; s++)
-                            {
-                                double pred = network.Predict(testFeatures[s])[0];
-                                int predictedClass = pred >= 0.5 ? 1 : 0;
-                                int actualClass = (int)testLabels[s][0];
-                                if (predictedClass == actualClass) testCorrect++;
-
-                                double p = Math.Max(1e-7, Math.Min(1.0 - 1e-7, pred));
-                                testLossSum += -(actualClass * Math.Log(p) + (1 - actualClass) * Math.Log(1.0 - p));
-                            }
-                            double testAcc = testCount > 0 ? (double)testCorrect / testCount * 100.0 : 0.0;
-                            double testLoss = testCount > 0 ? testLossSum / testCount : 0.0;
-
                             var logEntry = new TrainingEpochLog
                             {
                                 Epoch = epoch,
                                 Loss = avgLoss,
                                 Accuracy = trainAcc,
-                                TestLoss = testLoss,
-                                TestAccuracy = testAcc
+                                ValidationLoss = validationLoss,
+                                ValidationAccuracy = validationAcc
                             };
                             lock (historyLock)
                             {
@@ -330,27 +348,41 @@ namespace RealWorldPrediction
                                 {
                                     progressBar.Value = Math.Min(progressBar.Maximum, epoch);
                                     AppendLog(string.Format(
-                                        "  Epoch {0,5} | Loss: {1:F5} | Train Acc: {2:F2}% | Test Acc: {3:F2}%\r\n",
-                                        epoch, avgLoss, trainAcc, testAcc));
+                                        "  Epoch {0,5} | Loss: {1:F5} | Train Acc: {2:F2}% | Val Acc: {3:F2}% | Val Loss: {4:F5}\r\n",
+                                        epoch, avgLoss, trainAcc, validationAcc, validationLoss));
                                     pnlChart.Invalidate();
                                 }
                             }));
                         }
                     }
+
+                    // Restore the best validation-selected weights before the one-time
+                    // test evaluation.
+                    if (bestWeights != null)
+                    {
+                        network.ImportWeights(bestWeights);
+                    }
                 });
 
                 TimeSpan elapsed = DateTime.Now - startTime;
+                lastBestEpoch = bestEpoch;
                 AppendLog("═════════════════════════════════════════════════════════\r\n");
                 if (wasCancelled)
                 {
-                    AppendLog($"⏹ Training stopped by user after {elapsed.TotalSeconds:F2} seconds.\r\n\r\n");
+                    AppendLog($"⏹ Training stopped by user after {elapsed.TotalSeconds:F2} seconds.\r\n");
                 }
                 else
                 {
-                    AppendLog($"✔ Training completed in {elapsed.TotalSeconds:F2} seconds.\r\n\r\n");
+                    AppendLog($"✔ Training completed in {elapsed.TotalSeconds:F2} seconds.\r\n");
+                }
+                if (bestEpoch > 0)
+                {
+                    AppendLog(string.Format(
+                        "  Selected epoch {0} (validation loss {1:F6}); test set untouched until now.\r\n\r\n",
+                        bestEpoch, bestValidationLoss));
                 }
 
-                // Evaluate on unseen Test Set
+                // Evaluate once on the untouched test set using the selected weights.
                 EvaluateModel();
                 pnlChart.Invalidate();
             }
@@ -430,6 +462,7 @@ namespace RealWorldPrediction
             // Print full evaluation report to the training log
             AppendLog("📊  TEST SET EVALUATION REPORT\r\n");
             AppendLog("─────────────────────────────────────────────────────────\r\n");
+            AppendLog($"  Selected Epoch: {lastBestEpoch}\r\n");
             AppendLog($"  Accuracy:   {accuracy:F2}%\r\n");
             AppendLog($"  Precision:  {precision:F2}%\r\n");
             AppendLog($"  Recall:     {recall:F2}%\r\n");
@@ -605,7 +638,7 @@ namespace RealWorldPrediction
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# Generated: {0:O}", DateTime.Now));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                        "# Architecture: 13 -> {0} -> 1 (sigmoid)", lastHiddenNodes));
+                        "# Architecture: {0} -> {1} -> 1 (sigmoid)", dataHandler.FeatureCount, lastHiddenNodes));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# LearningRate={0}", lastLearningRate));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
@@ -615,15 +648,19 @@ namespace RealWorldPrediction
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# TrainSplit={0}", lastSplitRatio));
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# ValidationSplit={0}", lastValidationRatio));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                        "# SelectedEpoch={0}", lastBestEpoch));
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "# Seed={0}", lastSeed));
                     sb.AppendLine("# Loss=BinaryCrossEntropy");
-                    sb.AppendLine("Epoch,Loss,TrainAccuracy,TestLoss,TestAccuracy");
+                    sb.AppendLine("Epoch,Loss,TrainAccuracy,ValidationLoss,ValidationAccuracy");
 
                     foreach (TrainingEpochLog entry in snapshot)
                     {
                         sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                             "{0},{1:F6},{2:F2},{3:F6},{4:F2}",
-                            entry.Epoch, entry.Loss, entry.Accuracy, entry.TestLoss, entry.TestAccuracy));
+                            entry.Epoch, entry.Loss, entry.Accuracy, entry.ValidationLoss, entry.ValidationAccuracy));
                     }
 
                     File.WriteAllText(sfd.FileName, sb.ToString());
@@ -654,6 +691,7 @@ namespace RealWorldPrediction
             using (Pen gridPen = new Pen(Color.FromArgb(45, 45, 60)))
             using (Pen lossPen = new Pen(Color.FromArgb(245, 120, 80), 2F))
             using (Pen accPen = new Pen(Color.FromArgb(70, 200, 120), 2F))
+            using (Pen valAccPen = new Pen(Color.FromArgb(100, 160, 255), 1.5F))
             {
                 g.DrawString("Loss / Accuracy vs Epoch", titleFont, textBrush, bounds.Left, bounds.Top);
 
@@ -691,6 +729,7 @@ namespace RealWorldPrediction
 
                 PointF? previousLoss = null;
                 PointF? previousAccuracy = null;
+                PointF? previousValidationAccuracy = null;
 
                 foreach (TrainingEpochLog entry in history)
                 {
@@ -706,6 +745,12 @@ namespace RealWorldPrediction
                     PointF accPoint = new PointF(x, accY);
                     if (previousAccuracy.HasValue) g.DrawLine(accPen, previousAccuracy.Value, accPoint);
                     previousAccuracy = accPoint;
+
+                    float valAccY = plot.Bottom - (float)(entry.ValidationAccuracy / 100.0) * plot.Height;
+                    PointF valAccPoint = new PointF(x, valAccY);
+                    if (previousValidationAccuracy.HasValue)
+                        g.DrawLine(valAccPen, previousValidationAccuracy.Value, valAccPoint);
+                    previousValidationAccuracy = valAccPoint;
                 }
 
                 g.DrawString("0", smallFont, textBrush, plot.Left - 10, plot.Bottom - 6);
@@ -716,7 +761,9 @@ namespace RealWorldPrediction
                 g.DrawLine(lossPen, plot.Right - 82, plot.Top + 6, plot.Right - 68, plot.Top + 6);
                 g.DrawString("Loss", smallFont, textBrush, plot.Right - 64, plot.Top - 1);
                 g.DrawLine(accPen, plot.Right - 82, plot.Top + 20, plot.Right - 68, plot.Top + 20);
-                g.DrawString("Acc", smallFont, textBrush, plot.Right - 64, plot.Top + 13);
+                g.DrawString("Train Acc", smallFont, textBrush, plot.Right - 64, plot.Top + 13);
+                g.DrawLine(valAccPen, plot.Right - 82, plot.Top + 34, plot.Right - 68, plot.Top + 34);
+                g.DrawString("Val Acc", smallFont, textBrush, plot.Right - 64, plot.Top + 27);
             }
         }
 

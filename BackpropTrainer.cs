@@ -211,64 +211,57 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Saves all weights and biases in a stable, culture-invariant text format.
-        /// The first two lines are comments describing the architecture.
+        /// Returns a flat snapshot of all weights and biases in a stable order:
+        /// input-hidden weights, hidden-output weights, hidden biases, output biases.
         /// </summary>
-        public void SaveWeights(string path)
+        public double[] ExportWeights()
         {
-            using (StreamWriter sw = new StreamWriter(path))
+            List<double> values = new List<double>(
+                InputCount * HiddenCount + HiddenCount * OutputCount + HiddenCount + OutputCount);
+
+            for (int i = 0; i < inputNeurons.Length; i++)
             {
-                sw.WriteLine("# BackpropTrainer weights");
-                sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "# inputs={0} hidden={1} outputs={2}", InputCount, HiddenCount, OutputCount));
-
-                for (int i = 0; i < inputNeurons.Length; i++)
-                {
-                    for (int h = 0; h < hiddenNeurons.Length; h++)
-                    {
-                        sw.WriteLine(inputNeurons[i].getWeight(h).ToString("R", CultureInfo.InvariantCulture));
-                    }
-                }
-
                 for (int h = 0; h < hiddenNeurons.Length; h++)
                 {
-                    for (int o = 0; o < outputNeurons.Length; o++)
-                    {
-                        sw.WriteLine(hiddenNeurons[h].getWeight(o).ToString("R", CultureInfo.InvariantCulture));
-                    }
-                }
-
-                for (int h = 0; h < hiddenNeurons.Length; h++)
-                {
-                    sw.WriteLine(hiddenNeurons[h].getBias().ToString("R", CultureInfo.InvariantCulture));
-                }
-
-                for (int o = 0; o < outputNeurons.Length; o++)
-                {
-                    sw.WriteLine(outputNeurons[o].getBias().ToString("R", CultureInfo.InvariantCulture));
+                    values.Add(inputNeurons[i].getWeight(h));
                 }
             }
+
+            for (int h = 0; h < hiddenNeurons.Length; h++)
+            {
+                for (int o = 0; o < outputNeurons.Length; o++)
+                {
+                    values.Add(hiddenNeurons[h].getWeight(o));
+                }
+            }
+
+            for (int h = 0; h < hiddenNeurons.Length; h++)
+            {
+                values.Add(hiddenNeurons[h].getBias());
+            }
+
+            for (int o = 0; o < outputNeurons.Length; o++)
+            {
+                values.Add(outputNeurons[o].getBias());
+            }
+
+            return values.ToArray();
         }
 
         /// <summary>
-        /// Loads weights and biases written by <see cref="SaveWeights"/>.
+        /// Restores a snapshot produced by <see cref="ExportWeights"/>.
         /// </summary>
-        public void LoadWeights(string path)
+        public void ImportWeights(double[] values)
         {
-            List<double> values = new List<double>();
-            foreach (string line in File.ReadAllLines(path))
-            {
-                string trimmed = line.Trim();
-                if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal)) continue;
-                values.Add(double.Parse(trimmed, CultureInfo.InvariantCulture));
-            }
+            if (values == null) throw new ArgumentNullException(nameof(values));
 
             int expected = InputCount * HiddenCount + HiddenCount * OutputCount + HiddenCount + OutputCount;
-            if (values.Count != expected)
+            if (values.Length != expected)
             {
-                throw new InvalidDataException(
+                throw new ArgumentException(
                     string.Format(CultureInfo.InvariantCulture,
-                        "Expected {0} weight values but found {1}.", expected, values.Count));
+                        "Expected {0} weight values but found {1}.", expected, values.Length),
+                    nameof(values));
             }
 
             int index = 0;
@@ -297,6 +290,41 @@ namespace RealWorldPrediction
             {
                 outputNeurons[o].setBias(values[index++]);
             }
+        }
+
+        /// <summary>
+        /// Saves all weights and biases in a stable, culture-invariant text format.
+        /// The first two lines are comments describing the architecture.
+        /// </summary>
+        public void SaveWeights(string path)
+        {
+            using (StreamWriter sw = new StreamWriter(path))
+            {
+                sw.WriteLine("# BackpropTrainer weights");
+                sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                    "# inputs={0} hidden={1} outputs={2}", InputCount, HiddenCount, OutputCount));
+
+                foreach (double value in ExportWeights())
+                {
+                    sw.WriteLine(value.ToString("R", CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads weights and biases written by <see cref="SaveWeights"/>.
+        /// </summary>
+        public void LoadWeights(string path)
+        {
+            List<double> values = new List<double>();
+            foreach (string line in File.ReadAllLines(path))
+            {
+                string trimmed = line.Trim();
+                if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal)) continue;
+                values.Add(double.Parse(trimmed, CultureInfo.InvariantCulture));
+            }
+
+            ImportWeights(values.ToArray());
         }
     }
 }

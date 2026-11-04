@@ -174,7 +174,7 @@ Training an MLP over thousands of epochs is computationally intensive. If execut
 
 ### Step 1: Launch the Application
 - Open the solution in Visual Studio and press **F5** (or run `bin\Debug\RealWorldPrediction.exe`).
-- Upon launch, the app automatically finds `Data\heart.csv`, splits the raw rows into an 85/15 train/test split, and fits MinMax scaling on the training split only.
+- Upon launch, the app automatically finds `Data\heart.csv`, splits the raw rows into a 70/15/15 train/validation/test split, and fits MinMax scaling on the training split only.
 - The dataset summary is displayed in the bottom-left panel.
 
 ### Step 2: Configure Hyperparameters (Optional)
@@ -182,18 +182,19 @@ On the left panel under **Hyperparameters**, you can adjust:
 - **Learning Rate:** Step size for gradient descent (default: `0.0100`).
 - **Hidden Nodes:** Number of neurons in the hidden layer (default: `8`).
 - **Epochs:** Total training iterations over the dataset (default: `500`).
-- **Train Split %:** Percentage of samples for training vs testing (default: `85%`).
+- **Train Split %:** Percentage of samples for training (default: `70%`). The remaining data is divided evenly between validation and test, so the default is 70/15/15.
 - **Log Every N:** Frequency of UI log entries (default: every `25` epochs).
 
 ### Step 3: Train the Network
 - Click the **Train** button.
 - The button disables and the **Stop** button enables.
 - The progress bar fills in real time, and the center log streams:
-  `Epoch 100 | Loss: 0.37250 | Train Acc: 83.73% | Test Acc: 93.33%`
+  `Epoch 100 | Loss: 0.37250 | Train Acc: 83.73% | Val Acc: 77.78% | Val Loss: 0.49603`
+- The epoch with the lowest validation loss is kept automatically. The test set is not touched during training or model selection.
 - If you wish to halt early, click **Stop** at any time.
 
 ### Step 4: Review Evaluation Metrics
-Once training completes, the model automatically runs inference on the unseen **Test Set** (45 patients) and populates the metric cards:
+Once training completes, the best validation-selected weights are restored and the model runs inference on the unseen **Test Set** (45 patients), populating the metric cards:
 - **Accuracy:** Percentage of correct diagnostic predictions.
 - **Precision:** Percentage of predicted heart-disease cases that are true positives.
 - **Recall:** Sensitivity (percentage of heart disease cases successfully detected).
@@ -219,7 +220,7 @@ On the right panel under **Patient Data Input**:
 ### Step 7: Export Training Log to CSV
 - Click **Export CSV** in the training controls panel.
 - Choose a file destination.
-- A CSV file containing the run configuration plus `Epoch,Loss,TrainAccuracy,TestLoss,TestAccuracy` across all training intervals is saved for documentation, reports, or spreadsheet plotting.
+- A CSV file containing the run configuration plus `Epoch,Loss,TrainAccuracy,ValidationLoss,ValidationAccuracy` across all training intervals is saved for documentation, reports, or spreadsheet plotting.
 
 ---
 
@@ -260,14 +261,15 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
   - **`target = 1.0`** if diagnosis $\ge 1$ (Heart Disease Detected)
   - **`target = 0.0`** if diagnosis $= 0$ (Healthy / No Heart Disease)
 
-#### 2. Train-Test Splitting (`DataHandler.SplitTrainTest`)
+#### 2. Train / Validation / Test Splitting (`DataHandler.SplitTrainValidationTest`)
 - Performs an unbiased **Fisher-Yates shuffle** with a fixed seed (`seed = 42`) for reproducibility.
-- Partitions the raw rows into 85% training (252 samples) and 15% testing (45 samples), or according to the user-selected split percentage.
+- Partitions the raw rows into 70% training (207 samples), 15% validation (45 samples), and 15% test (45 samples), or according to the user-selected training percentage. The held-out portion is split evenly between validation and test.
+- The validation split is used only to select the best epoch (lowest validation BCE). The test split is touched once, after model selection.
 - The raw rows are copied into the splits, so `AllFeatures` is never normalized in place and the split can be repeated without double-scaling.
 
 #### 3. MinMax Normalization (`DataHandler.FitNormalizationOnTrain`)
 - Fits the per-feature min/max values on the **training split only**.
-- Transforms both splits (and later live inputs) with those train-derived parameters.
+- Transforms the train, validation, and test splits (and later live inputs) with those train-derived parameters.
 - Prevents attributes with large numeric scales (e.g., Cholesterol $\le 564$) from overpowering features with small scales (e.g., ST depression $\le 6.2$).
 - Persists the train-derived min/max vectors so live user input uses identical scaling parameters during inference.
 - Live inputs outside the training range are clipped to $[0, 1]$.
@@ -278,25 +280,26 @@ $$x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
 
 ## Hyperparameter Tuning & Experiments
 
-Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and epochs ($E$). All runs use the same 85/15 split, seed `42`, BCE loss, and Xavier initialization. Results are reproducible and were generated by the same training code used by the app (see `sample_hyperparameter_results.csv`).
+Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and epochs ($E$). All runs use the same 70/15/15 split, seed `42`, BCE loss, and Xavier initialization. The epoch shown for each run is the one with the lowest **validation** BCE, selected without touching the test set. Results are reproducible and were generated by the same training code used by the app (see `sample_hyperparameter_results.csv`).
 
-| Experiment | Learning Rate ($\eta$) | Hidden Neurons ($H$) | Epochs ($E$) | Train Accuracy | Test Accuracy | Test Loss | Observations |
-|---|---|---|---|---|---|---|---|
-| **A (Selected)** | **0.01** | **8** | **500** | **84.52%** | **91.11%** | **0.2740** | **Best generalization. Small model + low LR avoids memorization.** |
-| B | 0.10 | 16 | 1,000 | 100.00% | 84.44% | 1.2145 | Begins memorizing the training set; test loss rises. |
-| C | 0.10 | 20 | 3,000 | 100.00% | 75.56% | 2.3977 | Severe overfitting. See `sample_overfitting_log.csv`. |
-| D | 0.25 | 20 | 3,000 | 100.00% | 82.22% | 1.6544 | Fast convergence, but still overfits. |
-| E | 0.10 | 32 | 6,000 | 100.00% | 86.67% | 1.4546 | Larger model recovers some test accuracy; test loss stays high. |
+| Experiment | Learning Rate ($\eta$) | Hidden Neurons ($H$) | Epochs ($E$) | Selected Epoch | Validation Accuracy | Test Accuracy | Test Loss | Observations |
+|---|---|---|---|---|---|---|---|---|
+| **A (Selected)** | **0.01** | **8** | **500** | **98** | **80.00%** | **93.33%** | **0.2719** | **Lowest validation loss. Small model + low LR generalizes best.** |
+| B | 0.10 | 16 | 1,000 | 23 | 77.78% | 86.67% | 0.3219 | Converges quickly, then overfits; validation loss plateaus above A. |
+| C | 0.10 | 20 | 3,000 | 33 | 71.11% | 86.67% | 0.3238 | Severe overfitting. See `sample_overfitting_log.csv`. |
+| D | 0.25 | 20 | 3,000 | 16 | 73.33% | 82.22% | 0.3447 | Fast convergence, but the validation loss is the highest. |
+| E | 0.10 | 32 | 6,000 | 40 | 71.11% | 82.22% | 0.3358 | Larger model does not improve validation loss. |
 
 > [!NOTE]
-> The table reports the final held-out test result for each configuration. For a rigorous deployment, hyperparameters should be selected with a separate validation split or 5-fold cross-validation, and the test set should be touched only once. That is the recommended next step.
+> The table reports the validation-selected epoch and the corresponding one-time test result. Hyperparameters are compared by validation loss, not test accuracy. The test split is used only for the final reported number.
 
 ### Selected Configuration
 
 - **Learning Rate:** `0.01`
 - **Hidden Neurons:** `8`
 - **Epochs:** `500`
-- **Train/Test Split:** `85% / 15%` (252 / 45 samples)
+- **Selected Epoch:** `98` (lowest validation loss)
+- **Train / Validation / Test Split:** `70% / 15% / 15%` (207 / 45 / 45 samples)
 - **Seed:** `42`
 - **Loss:** Binary Cross-Entropy
 - **Initialization:** Xavier/Glorot uniform
@@ -305,16 +308,16 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 
 | Metric | Value |
 |---|---|
-| Accuracy | 91.11% (41/45) |
-| Precision | 91.30% (21/23) |
-| Recall / Sensitivity | 91.30% (21/23) |
+| Accuracy | 93.33% (42/45) |
+| Precision | 91.67% (22/24) |
+| Recall / Sensitivity | 95.65% (22/23) |
 | Specificity | 90.91% (20/22) |
-| F1 Score | 91.30% |
-| Test Loss (BCE) | 0.2740 |
-| Confusion Matrix | TP=21, FP=2, TN=20, FN=2 |
+| F1 Score | 93.62% |
+| Test Loss (BCE) | 0.2719 |
+| Confusion Matrix | TP=22, FP=2, TN=20, FN=1 |
 
 > [!IMPORTANT]
-> With only 45 test samples, the 95% Wilson confidence interval for 91.11% accuracy is approximately **79.3%–96.5%**. Treat the point estimate as indicative rather than definitive.
+> With only 45 test samples, the 95% Wilson confidence interval for 93.33% accuracy is approximately **82.1%–97.7%**. Treat the point estimate as indicative rather than definitive.
 
 ---
 
@@ -352,7 +355,7 @@ Pred Healthy:        FN                     TN
 
 - The dataset is small (297 patients) and dates from the 1980s; it is not representative of current clinical populations.
 - The test split contains only 45 patients, so a single accuracy estimate has a wide confidence interval (see the Wilson interval above).
-- Hyperparameters in this course experiment were compared on the held-out test split. A separate validation split or 5-fold cross-validation is recommended before drawing deployment conclusions.
+- Hyperparameters are compared by validation loss, and the test split is touched once. With only 45 validation and 45 test samples, both estimates are still noisy; 5-fold cross-validation would give a more stable picture.
 - The model has not been externally validated, calibrated, or reviewed by clinicians.
 - **This is an educational research prototype, not a medical device. Do not use it for clinical decisions.**
 
@@ -369,17 +372,17 @@ RealWorldPrediction/
 │   └── OuputN 1.cs               Unmodified output neuron library class
 ├── Data/
 │   └── heart.csv                 Cleveland Heart Disease dataset (CSV)
-├── DataHandler.cs                CSV parsing, leak-free MinMax scaling, train/test splitting
+├── DataHandler.cs                CSV parsing, leak-free MinMax scaling, 3-way split
 ├── BackpropTrainer.cs            Configurable LR + BCE trainer built from INeuron/HNeuron/ONeuron
-├── NeuralNetwork.cs              MLP wrapper (forward pass, prediction, save/load)
+├── NeuralNetwork.cs              MLP wrapper (forward pass, prediction, weight snapshots, save/load)
 ├── TrainingEpochLog.cs           Data model for training history and CSV export
 ├── Form1.cs                      Event handlers, async training, live chart, inference logic
 ├── Form1.Designer.cs             Visual Studio WinForms Designer layout and controls
 ├── Program.cs                    Application entry point
 ├── RealWorldPrediction.csproj    MSBuild project file
 ├── sample_training_log.csv       Real training log for selected config A (LR 0.01, 8 hidden, 500 epochs)
-├── sample_overfitting_log.csv    Real training log for config C (shows train/test divergence)
-├── sample_hyperparameter_results.csv  Real A-E experiment summary
+├── sample_overfitting_log.csv    Real training log for config C (shows train/validation divergence)
+├── sample_hyperparameter_results.csv  Real A-E experiment summary (validation-selected epochs)
 └── README.md                     Technical documentation and user manual
 ```
 

@@ -16,9 +16,12 @@ namespace RealWorldPrediction
     ///
     /// Preprocessing order is deliberately leak-free:
     ///   1. Parse the raw CSV into <see cref="AllFeatures"/> / <see cref="AllLabels"/>.
-    ///   2. Shuffle and split the RAW rows into train/test.
+    ///   2. Shuffle and split the RAW rows into train/validation/test.
     ///   3. Fit the MinMax min/max values on the TRAIN split only.
-    ///   4. Transform train and test with those train-derived parameters.
+    ///   4. Transform all three splits with those train-derived parameters.
+    ///
+    /// The held-out portion (100% - trainRatio) is divided evenly between
+    /// validation and test, so the default 70% train ratio gives a 70/15/15 split.
     ///
     /// Features:
     ///   0. Age              (continuous, 29-77)
@@ -80,6 +83,8 @@ namespace RealWorldPrediction
         // --- Normalized, split data ---
         public List<double[]> TrainFeatures { get; private set; }
         public List<double[]> TrainLabels { get; private set; }
+        public List<double[]> ValidationFeatures { get; private set; }
+        public List<double[]> ValidationLabels { get; private set; }
         public List<double[]> TestFeatures { get; private set; }
         public List<double[]> TestLabels { get; private set; }
 
@@ -140,13 +145,16 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Splits the raw data into training and testing sets using a Fisher-Yates shuffle,
-        /// then fits MinMax normalization on the training split only and transforms both
-        /// splits with those parameters.
+        /// Splits the raw data into training, validation, and testing sets using a
+        /// Fisher-Yates shuffle. The held-out portion (100% - <paramref name="trainRatio"/>)
+        /// is divided evenly between validation and test.
+        ///
+        /// MinMax normalization is then fitted on the training split only and applied to
+        /// all three splits, keeping the validation and test data completely unseen.
         /// </summary>
-        /// <param name="trainRatio">Fraction of data for training (default 0.85 = 85%).</param>
+        /// <param name="trainRatio">Fraction of data for training (default 0.70 = 70%).</param>
         /// <param name="seed">Random seed for reproducible splitting (default 42).</param>
-        public void SplitTrainTest(double trainRatio = 0.85, int seed = 42)
+        public void SplitTrainValidationTest(double trainRatio = 0.70, int seed = 42)
         {
             if (AllFeatures == null || AllFeatures.Count == 0) return;
             if (trainRatio <= 0.0 || trainRatio >= 1.0)
@@ -154,6 +162,11 @@ namespace RealWorldPrediction
 
             int total = AllFeatures.Count;
             int trainSize = (int)(total * trainRatio);
+            int holdoutSize = total - trainSize;
+            int validationSize = holdoutSize / 2;
+
+            if (trainSize < 2 || validationSize < 1 || holdoutSize - validationSize < 1)
+                throw new ArgumentException("The dataset is too small for the requested split ratios.", nameof(trainRatio));
 
             // Fisher-Yates shuffle for unbiased randomization.
             int[] indices = Enumerable.Range(0, total).ToArray();
@@ -166,10 +179,12 @@ namespace RealWorldPrediction
                 indices[j] = temp;
             }
 
-            // Copy raw rows into train/test. AllFeatures stays untouched so the
+            // Copy raw rows into train/validation/test. AllFeatures stays untouched so the
             // split can be repeated with a different ratio without double-normalizing.
             TrainFeatures = new List<double[]>();
             TrainLabels = new List<double[]>();
+            ValidationFeatures = new List<double[]>();
+            ValidationLabels = new List<double[]>();
             TestFeatures = new List<double[]>();
             TestLabels = new List<double[]>();
 
@@ -181,6 +196,11 @@ namespace RealWorldPrediction
                     TrainFeatures.Add((double[])AllFeatures[idx].Clone());
                     TrainLabels.Add((double[])AllLabels[idx].Clone());
                 }
+                else if (i < trainSize + validationSize)
+                {
+                    ValidationFeatures.Add((double[])AllFeatures[idx].Clone());
+                    ValidationLabels.Add((double[])AllLabels[idx].Clone());
+                }
                 else
                 {
                     TestFeatures.Add((double[])AllFeatures[idx].Clone());
@@ -190,6 +210,7 @@ namespace RealWorldPrediction
 
             FitNormalizationOnTrain();
             NormalizeRows(TrainFeatures);
+            NormalizeRows(ValidationFeatures);
             NormalizeRows(TestFeatures);
         }
 
@@ -235,7 +256,7 @@ namespace RealWorldPrediction
         {
             if (rawInput == null) throw new ArgumentNullException(nameof(rawInput));
             if (FeatureMin == null || FeatureMax == null)
-                throw new InvalidOperationException("Normalization parameters are not fitted. Call SplitTrainTest first.");
+                throw new InvalidOperationException("Normalization parameters are not fitted. Call SplitTrainValidationTest first.");
             if (rawInput.Length != FeatureMin.Length)
                 throw new ArgumentException(
                     $"Expected {FeatureMin.Length} features but received {rawInput.Length}.", nameof(rawInput));
@@ -267,6 +288,7 @@ namespace RealWorldPrediction
                    $"No Disease (0):     {healthyCount}\r\n" +
                    $"Features:           {FeatureCount}\r\n" +
                    $"Train Samples:      {TrainFeatures?.Count ?? 0}\r\n" +
+                   $"Validation Samples: {ValidationFeatures?.Count ?? 0}\r\n" +
                    $"Test Samples:       {TestFeatures?.Count ?? 0}\r\n" +
                    $"Normalization:      MinMax [0, 1] (fit on train)\r\n" +
                    $"══════════════════════════════════";
