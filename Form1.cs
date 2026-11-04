@@ -112,7 +112,7 @@ namespace RealWorldPrediction
 
                 lblDataInfo.Text = dataHandler.GetDataSummary();
                 AppendLog("✔ Dataset loaded successfully from:\r\n  " + Path.GetFileName(foundPath) + "\r\n");
-                AppendLog($"  Total: {dataHandler.AllFeatures.Count} records, {dataHandler.FeatureCount} features\r\n");
+                AppendLog($"  Total: {dataHandler.AllFeatures.Count} records, {DataHandler.RawFeatureCount} raw features -> {dataHandler.FeatureCount} encoded inputs\r\n");
                 AppendLog($"  Train: {dataHandler.TrainFeatures.Count} | Validation: {dataHandler.ValidationFeatures.Count} | Test: {dataHandler.TestFeatures.Count}\r\n\r\n");
             }
             else

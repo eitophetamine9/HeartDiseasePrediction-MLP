@@ -46,12 +46,12 @@ This program does the exact same thing using an artificial neural network built 
 
 ### 1. Network Topology
 The system uses a feedforward 3-layer Multi-Layer Perceptron (MLP):
-- **Input Layer:** 13 `INeuron` instances corresponding to the 13 clinical features.
+- **Input Layer:** 22 `INeuron` instances. The 13 raw clinical features are expanded by one-hot encoding the four categorical features (`cp`, `restecg`, `slope`, `thal`).
 - **Hidden Layer:** $H$ `HNeuron` instances (configurable, default 8).
 - **Output Layer:** 1 `ONeuron` instance producing a scalar activation $\hat{y} \in (0, 1)$.
 
 ```
-[13 Input Neurons (INeuron)]
+[22 Encoded Input Neurons (INeuron)]
          │  w_ih
          ▼
 [8 Hidden Neurons (HNeuron)]  (Sigmoid Activation)
@@ -63,7 +63,7 @@ The system uses a feedforward 3-layer Multi-Layer Perceptron (MLP):
 ### 2. Forward Propagation Mechanics
 
 #### Step 1: Input Layer Assignment
-For each input feature index $i \in \{0, \dots, 12\}$, the MinMax-normalized patient measurement $x_i \in [0, 1]$ is loaded into the input neuron:
+For each encoded input index $i \in \{0, \dots, 21\}$, the MinMax-normalized patient measurement $x_i \in [0, 1]$ is loaded into the input neuron:
 
 ```csharp
 inputNeurons[i].setInput(x_i);
@@ -72,7 +72,7 @@ inputNeurons[i].setInput(x_i);
 #### Step 2: Hidden Layer Activation
 Each hidden neuron $h$ computes its net weighted input $z_h$ by summing incoming weighted features and adding its internal bias:
 
-$$z_h = \text{bias}_h + \sum_{i=0}^{12} (x_i \cdot w_{ih})$$
+$$z_h = \text{bias}_h + \sum_{i=0}^{21} (x_i \cdot w_{ih})$$
 
 The activation $a_h$ is evaluated via the logistic sigmoid function:
 
@@ -268,9 +268,23 @@ The application uses the **UCI Cleveland Heart Disease Dataset** (collected by D
 - The validation split is used only to select the best epoch (lowest validation BCE). The test split is touched once, after model selection.
 - The raw rows are copied into the splits, so `AllFeatures` is never normalized in place and the split can be repeated without double-scaling.
 
-#### 3. MinMax Normalization (`DataHandler.FitNormalizationOnTrain`)
+#### 3. One-Hot Encoding (`DataHandler.EncodeRaw`)
+- Four categorical attributes are expanded into mutually exclusive indicator columns:
+  - `cp` (4 levels) → 4 inputs
+  - `restecg` (3 levels) → 3 inputs
+  - `slope` (3 levels) → 3 inputs
+  - `thal` (3 levels) → 3 inputs
+- The remaining nine numeric/binary features are copied through unchanged, giving **22 encoded inputs** from 13 raw features.
+- Encoding happens after the split but before normalization, so the encoding is identical for train, validation, test, and live predictions.
+- One-hot columns are already binary and are **not** MinMax-scaled.
+- `ca` is kept as a numeric ordinal feature (0–3) rather than one-hot encoded.
+- Live inputs are encoded with the same `EncodeRaw` path before scaling, so a patient entered in the UI uses exactly the same representation as the training data.
+- Encoded input order: `Age`, `Sex`, `CP=1..4`, `RestingBP`, `Cholesterol`, `FastingBS`, `Restecg=0..2`, `MaxHR`, `ExerciseAngina`, `STDepression`, `Slope=1..3`, `CA`, `Thal=3/6/7`.
+
+#### 4. MinMax Normalization (`DataHandler.FitNormalizationOnTrain`)
 - Fits the per-feature min/max values on the **training split only**.
 - Transforms the train, validation, and test splits (and later live inputs) with those train-derived parameters.
+- Skips the one-hot indicator columns, which remain exactly 0 or 1.
 - Prevents attributes with large numeric scales (e.g., Cholesterol $\le 564$) from overpowering features with small scales (e.g., ST depression $\le 6.2$).
 - Persists the train-derived min/max vectors so live user input uses identical scaling parameters during inference.
 - Live inputs outside the training range are clipped to $[0, 1]$.
@@ -285,22 +299,25 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 
 | Experiment | Learning Rate ($\eta$) | Hidden Neurons ($H$) | Epochs ($E$) | Selected Epoch | Threshold | Validation AUC | Test AUC | Test Accuracy | Test Loss | Observations |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **A (Selected)** | **0.01** | **8** | **500** | **98** | **0.689** | **0.857** | **0.964** | **95.56%** | **0.2719** | **Lowest validation loss and AUC. Best generalization.** |
-| B | 0.10 | 16 | 1,000 | 23 | 0.712 | 0.863 | 0.963 | 91.11% | 0.3219 | Converges quickly, then overfits. |
-| C | 0.10 | 20 | 3,000 | 33 | 0.754 | 0.851 | 0.961 | 95.56% | 0.3238 | Severe overfitting; validation loss stays high. |
-| D | 0.25 | 20 | 3,000 | 16 | 0.799 | 0.853 | 0.961 | 91.11% | 0.3447 | Fast convergence, highest validation loss. |
-| E | 0.10 | 32 | 6,000 | 40 | 0.762 | 0.842 | 0.957 | 95.56% | 0.3358 | Larger model does not improve validation loss. |
+| **A (Selected)** | **0.01** | **8** | **500** | **117** | **0.720** | **0.863** | **0.959** | **88.89%** | **0.2935** | **Lowest validation loss. Selected despite the noisier validation accuracy.** |
+| B | 0.10 | 16 | 1,000 | 15 | 0.885 | 0.866 | 0.957 | 84.44% | 0.3302 | Converges quickly, then overfits. |
+| C | 0.10 | 20 | 3,000 | 17 | 0.272 | 0.870 | 0.957 | 75.56% | 0.3384 | Severe overfitting; validation loss stays high. |
+| D | 0.25 | 20 | 3,000 | 10 | 0.376 | 0.866 | 0.953 | 82.22% | 0.3685 | Fast convergence, highest validation loss. |
+| E | 0.10 | 32 | 6,000 | 20 | 0.765 | 0.863 | 0.953 | 88.89% | 0.3449 | Larger model does not improve validation loss. |
 
 > [!NOTE]
 > The table reports the validation-selected epoch, the validation-tuned threshold, and the corresponding one-time test result. Hyperparameters are compared by validation loss, not test accuracy. The test split is used only for the final reported numbers.
+>
+> One-hot encoding expanded the input layer from 13 to 22 features. With only 207 training rows this increases variance, so the selected model's test accuracy dropped from 95.56% (ordinal encoding) to 88.89%, while test AUC stayed high at 0.959. The encoding removes the false ordinal relationship between categories; the accuracy change is within the noise expected from a 45-row test set.
 
 ### Selected Configuration
 
 - **Learning Rate:** `0.01`
 - **Hidden Neurons:** `8`
 - **Epochs:** `500`
-- **Selected Epoch:** `98` (lowest validation loss)
-- **Decision Threshold:** `0.689` (tuned on validation via Youden's J)
+- **Selected Epoch:** `117` (lowest validation loss)
+- **Decision Threshold:** `0.720` (tuned on validation via Youden's J)
+- **Input Encoding:** 13 raw features → 22 one-hot encoded inputs
 - **Train / Validation / Test Split:** `70% / 15% / 15%` (207 / 45 / 45 samples)
 - **Seed:** `42`
 - **Loss:** Binary Cross-Entropy
@@ -310,17 +327,19 @@ Systematic testing across learning rates ($\eta$), hidden layer sizes ($H$), and
 
 | Metric | Value |
 |---|---|
-| Accuracy | 95.56% (43/45) |
-| Precision | 100.00% (21/21) |
-| Recall / Sensitivity | 91.30% (21/23) |
+| Accuracy | 88.89% (40/45) |
+| Precision | 100.00% (18/18) |
+| Recall / Sensitivity | 78.26% (18/23) |
 | Specificity | 100.00% (22/22) |
-| F1 Score | 95.45% |
-| ROC-AUC | 0.964 |
-| Test Loss (BCE) | 0.2719 |
-| Confusion Matrix | TP=21, FP=0, TN=22, FN=2 |
+| F1 Score | 87.80% |
+| ROC-AUC | 0.959 |
+| Test Loss (BCE) | 0.2935 |
+| Confusion Matrix | TP=18, FP=0, TN=22, FN=5 |
 
 > [!IMPORTANT]
-> With only 45 test samples, the 95% Wilson confidence interval for 95.56% accuracy is approximately **85.2%–98.8%**. Treat the point estimate as indicative rather than definitive. The threshold was also tuned on just 45 validation samples, so it may not transfer perfectly to new populations.
+> With only 45 test samples, the 95% Wilson confidence interval for 88.89% accuracy is approximately **76.5%–95.2%**. Treat the point estimate as indicative rather than definitive. The threshold was also tuned on just 45 validation samples, so it may not transfer perfectly to new populations.
+>
+> A diagnostic comparison using an F1-optimal validation threshold instead of Youden's J produced the same 88.89% test accuracy but a different trade-off: TP=22, FP=4, TN=18, FN=1 (precision 84.62%, recall 95.65%, specificity 81.82%, F1 89.80%). For a screening tool, the higher-recall operating point may be clinically preferable; the app keeps Youden's J as the documented, balanced default.
 
 ---
 
@@ -387,7 +406,7 @@ RealWorldPrediction/
 │   └── OuputN 1.cs               Unmodified output neuron library class
 ├── Data/
 │   └── heart.csv                 Cleveland Heart Disease dataset (CSV)
-├── DataHandler.cs                CSV parsing, leak-free MinMax scaling, 3-way split
+├── DataHandler.cs                CSV parsing, one-hot encoding, leak-free MinMax scaling, 3-way split
 ├── BackpropTrainer.cs            Configurable LR + BCE trainer built from INeuron/HNeuron/ONeuron
 ├── ModelMetrics.cs               Accuracy/precision/recall/F1, ROC-AUC, threshold tuning
 ├── NeuralNetwork.cs              MLP wrapper (forward pass, prediction, weight snapshots, save/load)

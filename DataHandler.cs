@@ -17,11 +17,16 @@ namespace RealWorldPrediction
     /// Preprocessing order is deliberately leak-free:
     ///   1. Parse the raw CSV into <see cref="AllFeatures"/> / <see cref="AllLabels"/>.
     ///   2. Shuffle and split the RAW rows into train/validation/test.
-    ///   3. Fit the MinMax min/max values on the TRAIN split only.
-    ///   4. Transform all three splits with those train-derived parameters.
+    ///   3. One-hot encode the categorical features (cp, restecg, slope, thal).
+    ///   4. Fit the MinMax min/max values on the TRAIN split only.
+    ///   5. Transform all three splits with those train-derived parameters.
     ///
     /// The held-out portion (100% - trainRatio) is divided evenly between
     /// validation and test, so the default 70% train ratio gives a 70/15/15 split.
+    ///
+    /// Encoding: 9 numeric/binary features are kept as-is, while cp (4 levels),
+    /// restecg (3), slope (3), and thal (3) are one-hot encoded. That produces
+    /// <see cref="EncodedFeatureCount"/> = 22 network inputs from 13 raw features.
     ///
     /// Features:
     ///   0. Age              (continuous, 29-77)
@@ -76,6 +81,46 @@ namespace RealWorldPrediction
             "3 = Normal, 6 = Fixed Defect, 7 = Reversible Defect"
         };
 
+        // --- Encoded feature layout ---
+        public const int RawFeatureCount = 13;
+        public const int EncodedFeatureCount = 22;
+
+        /// <summary>
+        /// Names of the encoded network inputs, in the same order as the encoded rows.
+        /// </summary>
+        public static readonly string[] EncodedFeatureNames =
+        {
+            "Age",
+            "Sex",
+            "CP=1", "CP=2", "CP=3", "CP=4",
+            "Resting Blood Pressure",
+            "Cholesterol",
+            "Fasting Blood Sugar > 120",
+            "Restecg=0", "Restecg=1", "Restecg=2",
+            "Max Heart Rate",
+            "Exercise Induced Angina",
+            "ST Depression (oldpeak)",
+            "Slope=1", "Slope=2", "Slope=3",
+            "Major Vessels (ca)",
+            "Thal=3", "Thal=6", "Thal=7"
+        };
+
+        /// <summary>
+        /// Marks the encoded columns that are already binary one-hot indicators and
+        /// therefore must not be MinMax-scaled.
+        /// </summary>
+        private static readonly bool[] OneHotMask =
+        {
+            false, false,
+            true, true, true, true,
+            false, false, false,
+            true, true, true,
+            false, false, false,
+            true, true, true,
+            false,
+            true, true, true
+        };
+
         // --- Raw data (never normalized in place) ---
         public List<double[]> AllFeatures { get; private set; }
         public List<double[]> AllLabels { get; private set; }
@@ -92,11 +137,60 @@ namespace RealWorldPrediction
         public double[] FeatureMin { get; private set; }
         public double[] FeatureMax { get; private set; }
 
-        /// <summary>Number of input features (13 for Heart Disease).</summary>
-        public int FeatureCount => 13;
+        /// <summary>Number of encoded network inputs (22 after one-hot encoding).</summary>
+        public int FeatureCount => EncodedFeatureCount;
 
         /// <summary>Number of output neurons (1 for binary classification).</summary>
         public int OutputCount => 1;
+
+        /// <summary>
+        /// Expands a raw 13-feature patient row into the 22-input encoded layout.
+        /// Categorical features are one-hot encoded; continuous and binary features
+        /// are copied through unchanged. Unknown category values produce an all-zero
+        /// indicator block rather than failing the prediction.
+        /// </summary>
+        public static double[] EncodeRaw(double[] rawInput)
+        {
+            if (rawInput == null) throw new ArgumentNullException(nameof(rawInput));
+            if (rawInput.Length != RawFeatureCount)
+                throw new ArgumentException(
+                    $"Expected {RawFeatureCount} raw features but received {rawInput.Length}.",
+                    nameof(rawInput));
+
+            double[] encoded = new double[EncodedFeatureCount];
+            int k = 0;
+
+            encoded[k++] = rawInput[0];   // Age
+            encoded[k++] = rawInput[1];   // Sex
+
+            AddOneHot(encoded, ref k, rawInput[2], 1.0, 2.0, 3.0, 4.0);   // Chest pain type
+
+            encoded[k++] = rawInput[3];   // Resting BP
+            encoded[k++] = rawInput[4];   // Cholesterol
+            encoded[k++] = rawInput[5];   // Fasting blood sugar
+
+            AddOneHot(encoded, ref k, rawInput[6], 0.0, 1.0, 2.0);        // Resting ECG
+
+            encoded[k++] = rawInput[7];   // Max heart rate
+            encoded[k++] = rawInput[8];   // Exercise angina
+            encoded[k++] = rawInput[9];   // ST depression
+
+            AddOneHot(encoded, ref k, rawInput[10], 1.0, 2.0, 3.0);       // Slope
+
+            encoded[k++] = rawInput[11];  // Major vessels
+
+            AddOneHot(encoded, ref k, rawInput[12], 3.0, 6.0, 7.0);       // Thal
+
+            return encoded;
+        }
+
+        private static void AddOneHot(double[] encoded, ref int index, double value, params double[] categories)
+        {
+            for (int i = 0; i < categories.Length; i++)
+            {
+                encoded[index++] = value == categories[i] ? 1.0 : 0.0;
+            }
+        }
 
         /// <summary>
         /// Loads the Heart Disease dataset from a CSV file.
@@ -193,17 +287,17 @@ namespace RealWorldPrediction
                 int idx = indices[i];
                 if (i < trainSize)
                 {
-                    TrainFeatures.Add((double[])AllFeatures[idx].Clone());
+                    TrainFeatures.Add(EncodeRaw(AllFeatures[idx]));
                     TrainLabels.Add((double[])AllLabels[idx].Clone());
                 }
                 else if (i < trainSize + validationSize)
                 {
-                    ValidationFeatures.Add((double[])AllFeatures[idx].Clone());
+                    ValidationFeatures.Add(EncodeRaw(AllFeatures[idx]));
                     ValidationLabels.Add((double[])AllLabels[idx].Clone());
                 }
                 else
                 {
-                    TestFeatures.Add((double[])AllFeatures[idx].Clone());
+                    TestFeatures.Add(EncodeRaw(AllFeatures[idx]));
                     TestLabels.Add((double[])AllLabels[idx].Clone());
                 }
             }
@@ -225,6 +319,13 @@ namespace RealWorldPrediction
 
             for (int f = 0; f < count; f++)
             {
+                if (OneHotMask[f])
+                {
+                    FeatureMin[f] = 0.0;
+                    FeatureMax[f] = 1.0;
+                    continue;
+                }
+
                 FeatureMin[f] = TrainFeatures.Min(row => row[f]);
                 FeatureMax[f] = TrainFeatures.Max(row => row[f]);
             }
@@ -239,6 +340,8 @@ namespace RealWorldPrediction
             {
                 for (int f = 0; f < row.Length; f++)
                 {
+                    if (OneHotMask[f]) continue;
+
                     double range = FeatureMax[f] - FeatureMin[f];
                     row[f] = range > 0.0
                         ? (row[f] - FeatureMin[f]) / range
@@ -248,25 +351,32 @@ namespace RealWorldPrediction
         }
 
         /// <summary>
-        /// Normalizes a single raw input vector using the training-derived min/max
-        /// parameters. Values outside the training range are clipped to [0, 1] so
-        /// live predictions cannot push the network into saturation.
+        /// Encodes and normalizes a single raw 13-feature input vector using the
+        /// training-derived min/max parameters. Values outside the training range are
+        /// clipped to [0, 1] so live predictions cannot push the network into saturation.
         /// </summary>
         public double[] NormalizeSingle(double[] rawInput)
         {
             if (rawInput == null) throw new ArgumentNullException(nameof(rawInput));
             if (FeatureMin == null || FeatureMax == null)
                 throw new InvalidOperationException("Normalization parameters are not fitted. Call SplitTrainValidationTest first.");
-            if (rawInput.Length != FeatureMin.Length)
+            if (rawInput.Length != RawFeatureCount)
                 throw new ArgumentException(
-                    $"Expected {FeatureMin.Length} features but received {rawInput.Length}.", nameof(rawInput));
+                    $"Expected {RawFeatureCount} raw features but received {rawInput.Length}.", nameof(rawInput));
 
-            double[] normalized = new double[rawInput.Length];
-            for (int f = 0; f < rawInput.Length; f++)
+            double[] encoded = EncodeRaw(rawInput);
+            double[] normalized = new double[encoded.Length];
+            for (int f = 0; f < encoded.Length; f++)
             {
+                if (OneHotMask[f])
+                {
+                    normalized[f] = encoded[f];
+                    continue;
+                }
+
                 double range = FeatureMax[f] - FeatureMin[f];
                 double value = range > 0.0
-                    ? (rawInput[f] - FeatureMin[f]) / range
+                    ? (encoded[f] - FeatureMin[f]) / range
                     : 0.0;
                 normalized[f] = Math.Max(0.0, Math.Min(1.0, value));
             }
@@ -286,7 +396,8 @@ namespace RealWorldPrediction
                    $"Total Samples:      {AllFeatures.Count}\r\n" +
                    $"Heart Disease (1):  {diseaseCount}\r\n" +
                    $"No Disease (0):     {healthyCount}\r\n" +
-                   $"Features:           {FeatureCount}\r\n" +
+                   $"Raw Features:       {RawFeatureCount}\r\n" +
+                   $"Encoded Inputs:     {EncodedFeatureCount} (one-hot: cp, restecg, slope, thal)\r\n" +
                    $"Train Samples:      {TrainFeatures?.Count ?? 0}\r\n" +
                    $"Validation Samples: {ValidationFeatures?.Count ?? 0}\r\n" +
                    $"Test Samples:       {TestFeatures?.Count ?? 0}\r\n" +
