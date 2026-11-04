@@ -17,6 +17,7 @@ bld/
 
 # Visual Studio files
 .vs/
+.vscode/
 *.user
 *.userosscache
 *.sln.docstates
